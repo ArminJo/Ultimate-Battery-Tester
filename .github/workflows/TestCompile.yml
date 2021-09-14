@@ -1,0 +1,45 @@
+# TestCompile.yml
+# Github workflow script to test compile all examples of an Arduino library repository.
+#
+# Copyright (C) 2021  Armin Joachimsmeyer
+# https://github.com/ArminJo/Github-Actions
+#
+
+# This is the name of the workflow, visible on GitHub UI.
+name: TestCompile
+on:
+  push: # see: https://help.github.com/en/actions/reference/events-that-trigger-workflows#pull-request-event-pull_request
+    paths:
+      - '**.ino'
+      - '**.cpp'
+      - '**.h'
+      - '**TestCompile.yml'
+
+jobs:
+  build:
+    name: Test compiling examples for UNO
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The matrix will produce one job for each configuration parameter of type `build-properties`
+        build-properties:
+          - -USE_NO_LCD
+          - -DUSE_SERIAL_LCD
+          - -DUSE_PARALLEL_LCD
+        include:
+          - build-properties: -DUSE_PARALLEL_LCD
+          - required-libraries: LiquidCrystal
+
+          - build-properties: -DUSE_SERIAL_LCD
+          - required-libraries: LiquidCrystal_I2C
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Compile all examples
+        uses: ArminJo/arduino-test-compile@master
+        with:
+          arduino-board-fqbn: arduino:avr:nano:cpu=atmega328
+          required-libraries: EasyButtonAtInt01,${{ env.REQUIRED_LIBRARIES }}
+          build-properties: ${{ toJson(matrix.build-properties) }}
