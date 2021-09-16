@@ -5,7 +5,7 @@
 [![Hit Counter](https://hitcounter.pythonanywhere.com/count/tag.svg?url=https%3A%2F%2Fgithub.com%2FArminJo%2FUltimate-Battery-Tester)](https://github.com/brentvollebregt/hit-counter)
 
 ## Features
-- Measures the ESR (equivalent series resistance) of the battery. This is an idicator of the health of the battery.
+- **Measures the ESR (equivalent series resistance) of the battery.** This is an idicator of the health of the battery.
 - Stores voltage and ESR graphim EEPROM while discharging.
 - Current measurement or EEPROM stored measurement graph can be displayed with Arduino Plotter.
 - You can continue interrupted dichare easurements.

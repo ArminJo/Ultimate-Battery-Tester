@@ -17,7 +17,7 @@ on:
 
 jobs:
   build:
-    name: Test compiling examples for UNO
+    name: Test compiling examples for Nano
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -27,11 +27,14 @@ jobs:
           - -DUSE_SERIAL_LCD
           - -DUSE_PARALLEL_LCD
         include:
+#          - build-properties: -USE_NO_LCD
+#            required-libraries: LiquidCrystal # workaround, because Arduino cli wants this library in this case :-(
+
           - build-properties: -DUSE_PARALLEL_LCD
-          - required-libraries: LiquidCrystal
+            required-libraries: LiquidCrystal
 
           - build-properties: -DUSE_SERIAL_LCD
-          - required-libraries: LiquidCrystal_I2C
+            required-libraries: LiquidCrystal I2C
 
     steps:
       - name: Checkout
@@ -41,5 +44,6 @@ jobs:
         uses: ArminJo/arduino-test-compile@master
         with:
           arduino-board-fqbn: arduino:avr:nano:cpu=atmega328
-          required-libraries: EasyButtonAtInt01,${{ env.REQUIRED_LIBRARIES }}
-          build-properties: ${{ toJson(matrix.build-properties) }}
+          required-libraries: 'EasyButtonAtInt01,${{ matrix.required-libraries }}'
+          build-properties: '{ "All": ${{ toJson(matrix.build-properties) }} }'
+#          debug-install: true
