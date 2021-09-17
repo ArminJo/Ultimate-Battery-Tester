@@ -27,8 +27,8 @@ jobs:
           - -DUSE_SERIAL_LCD
           - -DUSE_PARALLEL_LCD
         include:
-#          - build-properties: -USE_NO_LCD
-#            required-libraries: LiquidCrystal # workaround, because Arduino cli wants this library in this case :-(
+          - build-properties: -USE_NO_LCD
+            required-libraries: LiquidCrystal # workaround, because Arduino cli wants this library in this case :-(
 
           - build-properties: -DUSE_PARALLEL_LCD
             required-libraries: LiquidCrystal

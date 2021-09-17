@@ -6,17 +6,20 @@
 
 ## Features
 - **Measures the ESR (equivalent series resistance) of the battery.** This is an idicator of the health of the battery.
-- Stores voltage and ESR graphim EEPROM while discharging.
+- Stores voltage and ESR graph for up to 8 hours in EEPROM while discharging.
 - Current measurement or EEPROM stored measurement graph can be displayed with Arduino Plotter.
-- You can continue interrupted dichare easurements.
-- Display of current esr, voltage, current and capacity on a 1602 LCD.
+- You can continue interrupted dicharge measurements.
+- Display of ESR, voltage, current and capacity on a 1602 LCD.
 
 ## Battery ESR
 The internal resistance is an idicator of the health of the battery. E.g. if a NiMH battery has an ESR of **1 ohm**, it delivers **only 1 volt at a current of 200 mA**, which may be to low for the circuit to work properly.
 ESR values for NiMH can go down to excellent 0.05 ohm.
 
 ## Compile with the Arduino IDE
-Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the src/SBMInfo folder. 
+Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the UltimateBatteryTester folder. 
+
+![Fritzing board](extras/UltimateBatteryTester_Steckplatine.png)
+![Fritzing schematics](extras/UltimateBatteryTester_Schaltplan.png)
 
 # Revision History
 ### Version 1.0.0
