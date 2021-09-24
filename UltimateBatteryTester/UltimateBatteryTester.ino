@@ -69,10 +69,9 @@
 /*
  * External circuit definitions
  */
-#define SHUNT_RESISTOR_MILLIOHM                 2000  // 2 ohm
+#define SHUNT_RESISTOR_MILLIOHM                 2000L  // 2 ohm
 #define LOAD_LOW_MILLIOHM                       (1000 + SHUNT_RESISTOR_MILLIOHM) // Additional 1 ohm
-#define LOAD_HIGH_MILLIOHM                      (10000 + SHUNT_RESISTOR_MILLIOHM) // Additional 10 ohm
-#define SHUNT_RESISTOR_MILLIOHM                 2000  // 2 ohm
+#define LOAD_HIGH_MILLIOHM                      (10 * 1000 + SHUNT_RESISTOR_MILLIOHM) // Additional 10 ohm
 #define ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE    2L       // Divider with 100 kOhm and 100 kOhm
 #define ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE   4L       // Divider with 100 kOhm and 33.333 kOhm
 
@@ -96,25 +95,27 @@ HIGH_LOAD }, { "Alkali    ", 1500, 1550, 1300, HIGH_LOAD }, { "NiZn batt.", 1650
         3400, 2700, LOW_LOAD }, { "LiPo batt.", 3700, 4300, 3500, LOW_LOAD }, { "Voltage   ", 0, 0, 0, NO_LOAD } };
 
 /*
- * Variables used by the program
+ * Current battery values set by getBatteryValues()
  */
-uint16_t sCurrentBatteryESRMilliohm;
-uint16_t sCurrentLoadMilliampere;
-uint16_t sLastStoredBatteryMilliampere;
+struct BatteryInfoStruct {
+    uint16_t VoltageNoLoadMillivolt;
+    uint16_t VoltageLoadMillivolt;
+    int16_t Milliampere;
+    uint16_t ESRMilliohm;
+    uint16_t sESRTestDeltaMillivolt = 0; // only displayed at initial ESR testing
+    uint32_t CapacityAccumulator;
+    uint16_t CapacityMilliampereHour;
+
+    uint8_t LoadState;
+    uint8_t TypeIndex;
+} sBatteryInfo;
+
+/*
+ * current value in sCurrentLoadResistorHistory[0]. Used for computing and storing the average.
+ * Precise load resistor value is required for restoring ESR from stored voltage and current.
+ */
 #define HISTORY_SIZE_FOR_AVERAGE 16
-uint16_t sCurrentLoadResistorHistory[HISTORY_SIZE_FOR_AVERAGE]; // current value in sCurrentLoadResistorHistory[0]. Used for computing the average
-uint16_t sCurrentBatteryVoltageNoLoadMillivolt;
-uint16_t sCurrentBatteryVoltageLoadMillivolt;
-uint16_t sLastBatteryVoltageNoLoadMillivolt; // Voltage to be displayed at "No batt." detection
-uint16_t sLastStoredBatteryVoltageNoLoadMillivolt;
-uint8_t sMilliampereDeltaTemp;
-uint8_t sVoltageDeltaTemp;
-bool sDeltaTempIsEmpty;
-uint16_t sESRTestDeltaMillivolt = 0; // only displayed at initial ESR testing
-uint32_t sCapacityAccumulator;
-uint16_t sCurrentCapacityMilliamperehour;
-uint8_t sCurrentLoadState;
-uint8_t sCurrentBatteryTypeIndex;
+uint16_t sCurrentLoadResistorHistory[HISTORY_SIZE_FOR_AVERAGE];
 
 /*
  * EEPROM array for discharging graph
@@ -122,22 +123,32 @@ uint8_t sCurrentBatteryTypeIndex;
  * The upper 4 bit store the first value, the lower 4 bit store the second value
  * 8 is added to the 4 bit integer (range from -8 and 7) to get positive values for storage
  */
-#define NUMBER_OF_SAMPLES 500 // 8h 20min for 30 seconds per sample
-int sDeltaArrayIndex; // The index of the next values to be written. -1 to signal, that start values must be written.
-int8_t sVoltageDeltaPrintArray[NUMBER_OF_SAMPLES];
-int8_t sESRDeltaPrintArray[NUMBER_OF_SAMPLES];
-int8_t sMilliampereDeltaPrintArray[NUMBER_OF_SAMPLES];
+struct ValuesForDeltaStorageStruct {
+    uint16_t lastStoredMilliampere;
+    uint16_t lastStoredVoltageNoLoadMillivolt;
+    uint8_t tempMilliampereDelta;
+    uint8_t tempVoltageDelta;
+    bool tempDeltaIsEmpty;
+    int DeltaArrayIndex; // The index of the next values to be written. -1 to signal, that start values must be written.
+} ValuesForDeltaStorage;
+
 /*
  * EEPROM store
  */
+#define NUMBER_OF_SAMPLES 500 // 8h 20min for 30 seconds per sample
 EEMEM int8_t sVoltageDeltaArrayEEPROM[NUMBER_OF_SAMPLES];
 EEMEM int8_t sMilliampereDeltaArrayEEPROM[NUMBER_OF_SAMPLES];
 // The start values for the delta array
-EEMEM uint16_t sInitialDischargingVoltageEEPROM;
-EEMEM uint16_t sInitialDischargingMilliampereEEPROM;
-EEMEM uint8_t BatteryTypeIndexEEPROM;
-EEMEM uint16_t sLoadResistorEEPROM;
-EEMEM uint16_t sCurrentCapacityMilliamperehourEEPROM;
+struct EEPROMStartValuesStruct {
+    uint16_t initialDischargingVoltage;
+    uint16_t initialDischargingMilliampere;
+
+    uint16_t LoadResistorMilliohm;
+    uint8_t BatteryTypeIndex;
+
+    uint16_t CapacityMilliampereHour; // is set at end of measurement or by store button
+};
+EEMEM struct EEPROMStartValuesStruct EEPROMStartValues;
 
 #define ENABLE_PLOTTER_OUTPUT
 #define ENABLE_PLOTTER_MILLIAMPERE_OUTPUT
@@ -153,15 +164,16 @@ EEMEM uint16_t sCurrentCapacityMilliamperehourEEPROM;
 #define STATE_DISCHARGE_FINISHED  5 // Switch off voltage reached, until removal of battery
 volatile uint8_t sMeasurementState = STATE_INITIAL;
 
-void getBatteryVoltage();
+void getBatteryVoltageMillivolt();
 void detectAndPrintBatteryType();
-void getLoadCurrent();
+void getBatteryCurrent();
 void getBatteryValues();
+void checkStopCondition();
 void setLoad(uint8_t aNewLoadState);
 void printBatteryValues();
 void printAsFloat(uint16_t aValueInMillis);
 void LCDPrintAsFloat(uint16_t aValueInMillis);
-void storePlotterDataToEEPROM();
+void storeBatteryValues();
 void printEEPROMData();
 
 void switchToStateStoreToEEPROM();
@@ -208,6 +220,8 @@ LiquidCrystal_I2C myLCD(0x27, LCD_COLUMNS, LCD_ROWS);  // set the LCD address to
 LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
 #endif
 
+#define ONE_SECOND_MILLIS 1000L
+
 /*
  * Measurement timing
  */
@@ -229,8 +243,8 @@ unsigned long sFirstMillisOfESRCheck;
 #  else
 #define STATE_INITIAL_ESR_DURATION_SECONDS  30 // 30 seconds before starting discharge and plotting, to have time to just test for ESR of battery.
 #  endif
-#define STORAGE_PERIOD_SECONDS          30 // 30 seconds
-#define SAMPLE_PERIOD_MILLIS            1000
+#define STORAGE_PERIOD_SECONDS          30L // 30 seconds
+#define SAMPLE_PERIOD_MILLIS            ONE_SECOND_MILLIS
 #endif
 
 //#define DEBUG
@@ -291,7 +305,6 @@ void setup() {
         sMeasurementState = STATE_EEPROM_DATA_PRINTED;
     }
 }
-
 void loop() {
 
     if (millis() - sLastMillisOfSample >= SAMPLE_PERIOD_MILLIS) {
@@ -315,22 +328,24 @@ void loop() {
             }
         }
 
+        uint16_t tLastBatteryVoltageNoLoadMillivolt = sBatteryInfo.VoltageNoLoadMillivolt; // store current no load voltage for display at "No batt." detection
+
         if (sMeasurementState == STATE_DISCHARGE_FINISHED) {
-            getBatteryVoltage(); // get current battery load voltage
+            getBatteryVoltageMillivolt(); // get current battery load voltage
         } else {
             getBatteryValues(); // must be called only once per sample!
         }
         /*
          * Check for removed battery
          */
-        if (sCurrentBatteryVoltageNoLoadMillivolt < 100) {
+        if (sBatteryInfo.VoltageNoLoadMillivolt < 100) {
 #if defined(USE_LCD)
             if (sMeasurementState != STATE_INITIAL) {
                 // move current displayed voltage right if we already have one
                 for (int i = 0; i < 10; ++i) {
                     myLCD.setCursor(i, 0);
                     myLCD.print(' ');
-                    LCDPrintAsFloat(sLastBatteryVoltageNoLoadMillivolt);
+                    LCDPrintAsFloat(tLastBatteryVoltageNoLoadMillivolt);
                     myLCD.print('V');
                     delay(120);
                 }
@@ -349,7 +364,7 @@ void loop() {
              * Check for end of STATE_INITIAL_ESR
              */
             if (sMeasurementState == STATE_INITIAL_ESR) {
-                if (millis() - sFirstMillisOfESRCheck >= (STATE_INITIAL_ESR_DURATION_SECONDS * 1000L)) {
+                if (millis() - sFirstMillisOfESRCheck >= (STATE_INITIAL_ESR_DURATION_SECONDS * ONE_SECOND_MILLIS)) {
                     /*
                      * Print message
                      */
@@ -376,8 +391,8 @@ void loop() {
 
                     // If button was not pressed before, start a new data set
                     if (!Button0AtPin2.ButtonStateHasJustChanged) {
-                        sDeltaArrayIndex = -1;
-                        sCapacityAccumulator = 0;
+                        ValuesForDeltaStorage.DeltaArrayIndex = -1;
+                        sBatteryInfo.CapacityAccumulator = 0;
                         switchToStateStoreToEEPROM();
                     }
                 }
@@ -388,37 +403,15 @@ void loop() {
             /*
              * Check for periodic storage to EEPROM
              */
-            if (millis() - sLastMillisOfStorage >= STORAGE_PERIOD_SECONDS * 1000L) {
+            if (millis() - sLastMillisOfStorage >= STORAGE_PERIOD_SECONDS * ONE_SECOND_MILLIS) {
                 sLastMillisOfStorage = millis();
-                storePlotterDataToEEPROM();
+                storeBatteryValues();
             }
 
             /*
              * Check for switch off voltage reached -> end of measurement
              */
-            if (sCurrentBatteryVoltageNoLoadMillivolt < BatteryTypeInfoArray[sCurrentBatteryTypeIndex].SwitchOffVoltageMillivolt
-                    && sCurrentBatteryVoltageNoLoadMillivolt
-                            > BatteryTypeInfoArray[sCurrentBatteryTypeIndex].SwitchOffVoltageMillivolt - 100) {
-                setLoad(NO_LOAD);
-                eeprom_write_word(&sCurrentCapacityMilliamperehourEEPROM, sCurrentCapacityMilliamperehour);
-                sMeasurementState = STATE_DISCHARGE_FINISHED;
-                tone(PIN_TONE, NOTE_G6);
-                delay(150);
-                tone(PIN_TONE, NOTE_E6);
-                delay(150);
-                tone(PIN_TONE, NOTE_C6, 250);
-
-#if !defined(ENABLE_PLOTTER_OUTPUT)
-                Serial.print(F("Battery voltage is now lower than switch off voltage "));
-                printAsFloat(BatteryTypeInfoArray[sCurrentBatteryTypeIndex].SwitchOffVoltageMillivolt);
-                Serial.println(F(" V"));
-                Serial.println(F("Switch to state DISCHARGE_FINISHED"));
-#endif
-#if defined(USE_LCD)
-                myLCD.setCursor(7, 0);
-                myLCD.print(F(" Finished"));
-#endif
-            }
+            checkStopCondition();
         }
 
         /*
@@ -461,7 +454,7 @@ void handleContinueButtonPress(bool aButtonToggleState) {
 #endif
 
     } else if (sMeasurementState == STATE_STORE_TO_EEPROM) {
-        eeprom_write_word(&sCurrentCapacityMilliamperehourEEPROM, sCurrentCapacityMilliamperehour);
+        eeprom_write_word(&EEPROMStartValues.CapacityMilliampereHour, sBatteryInfo.CapacityMilliampereHour);
 #if defined(USE_LCD)
         myLCD.setCursor(0, 0);
         myLCD.print(F("Capacity stored "));
@@ -481,7 +474,7 @@ void handleContinueButtonPress(bool aButtonToggleState) {
 }
 
 void setLoad(uint8_t aNewLoadState) {
-    sCurrentLoadState = aNewLoadState;
+    sBatteryInfo.LoadState = aNewLoadState;
     if (aNewLoadState == NO_LOAD) {
         digitalWrite(PIN_LOAD_LOW, LOW);    // disable 10 ohm load
         digitalWrite(PIN_LOAD_HIGH, LOW);   // disable 3 ohm load
@@ -500,7 +493,7 @@ void setLoad(uint8_t aNewLoadState) {
  * Provides automatic range switch between 2.2 and 4.4 volt range
  * Does not affect the loads
  */
-void getBatteryVoltage() {
+void getBatteryVoltageMillivolt() {
     static bool sVoltageRangeIsLow = true;
 
     uint16_t tInputVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_VOLTAGE, INTERNAL);
@@ -560,10 +553,10 @@ void getBatteryVoltage() {
                 * tInputVoltageRaw) / 1023);
     }
 
-    if (sCurrentLoadState == NO_LOAD) {
-        sCurrentBatteryVoltageNoLoadMillivolt = tCurrentBatteryVoltageMillivolt;
+    if (sBatteryInfo.LoadState == NO_LOAD) {
+        sBatteryInfo.VoltageNoLoadMillivolt = tCurrentBatteryVoltageMillivolt;
     } else {
-        sCurrentBatteryVoltageLoadMillivolt = tCurrentBatteryVoltageMillivolt;
+        sBatteryInfo.VoltageLoadMillivolt = tCurrentBatteryVoltageMillivolt;
     }
 
 #ifdef DEBUG
@@ -573,9 +566,10 @@ void getBatteryVoltage() {
 #endif
 }
 
-void getLoadCurrent() {
+void getBatteryCurrent() {
     uint16_t tShuntVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_CURRENT, INTERNAL);
-    sCurrentLoadMilliampere = (((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) * tShuntVoltageRaw) / (1023L * SHUNT_RESISTOR_MILLIOHM));
+    sBatteryInfo.Milliampere =
+            (((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) * tShuntVoltageRaw) / (1023L * SHUNT_RESISTOR_MILLIOHM));
 }
 
 /*
@@ -583,27 +577,28 @@ void getLoadCurrent() {
  */
 void getBatteryValues() {
 //Do it before deactivating the load
-    getLoadCurrent();
-    getBatteryVoltage(); // get current battery load voltage
+    getBatteryCurrent();
+    getBatteryVoltageMillivolt(); // get current battery load voltage
 
 //Deactivate load and wait for voltage to settle
     setLoad(NO_LOAD);
     delay(LOAD_SWITCH_SETTLE_TIME_MILLIS);
 
-    sLastBatteryVoltageNoLoadMillivolt = sCurrentBatteryVoltageNoLoadMillivolt; // store current no load voltage for display at "No batt." detection
-    getBatteryVoltage(); // get current battery no load voltage
-    sESRTestDeltaMillivolt = sCurrentBatteryVoltageNoLoadMillivolt - sCurrentBatteryVoltageLoadMillivolt;
+    getBatteryVoltageMillivolt(); // get current battery no load voltage
+    sBatteryInfo.sESRTestDeltaMillivolt = sBatteryInfo.VoltageNoLoadMillivolt - sBatteryInfo.VoltageLoadMillivolt;
 
 // restore original load state
-    setLoad(BatteryTypeInfoArray[sCurrentBatteryTypeIndex].LoadType);
+    setLoad(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].LoadType);
 
 //    Serial.print(F("Delta millivolt="));
 //    Serial.println(tBatteryVoltageDeltaMillivolt);
-    if (sCurrentLoadMilliampere > 1) {
-        sCapacityAccumulator += sCurrentLoadMilliampere;
-        sCurrentCapacityMilliamperehour = sCapacityAccumulator / ((3600L * 1000) / SAMPLE_PERIOD_MILLIS); // = / 3600 for 1 s sample period
+    if (sBatteryInfo.Milliampere > 1) {
+        // capacity computation
+        sBatteryInfo.CapacityAccumulator += sBatteryInfo.Milliampere;
+        sBatteryInfo.CapacityMilliampereHour = sBatteryInfo.CapacityAccumulator
+                / ((3600L * ONE_SECOND_MILLIS) / SAMPLE_PERIOD_MILLIS); // = / 3600 for 1 s sample period
 
-        sCurrentBatteryESRMilliohm = (sESRTestDeltaMillivolt * 1000L) / sCurrentLoadMilliampere;
+        sBatteryInfo.ESRMilliohm = (sBatteryInfo.sESRTestDeltaMillivolt * 1000L) / sBatteryInfo.Milliampere;
 
         /*
          * shift load resistor history array and insert current value
@@ -611,8 +606,47 @@ void getBatteryValues() {
         for (uint8_t i = HISTORY_SIZE_FOR_AVERAGE - 1; i > 0; --i) {
             sCurrentLoadResistorHistory[i] = sCurrentLoadResistorHistory[i - 1];
         }
-        sCurrentLoadResistorHistory[0] = (sCurrentBatteryVoltageNoLoadMillivolt * 1000L / sCurrentLoadMilliampere)
-                - sCurrentBatteryESRMilliohm;
+        sCurrentLoadResistorHistory[0] = (sBatteryInfo.VoltageNoLoadMillivolt * 1000L / sBatteryInfo.Milliampere)
+                - sBatteryInfo.ESRMilliohm;
+    }
+}
+
+/*
+ * Play short melody
+ */
+void playEndTone(void) {
+    tone(PIN_TONE, NOTE_A5);
+    delay(1000);
+    tone(PIN_TONE, NOTE_E5);
+    delay(1000);
+    tone(PIN_TONE, NOTE_A4, 1000);
+}
+
+/*
+ * Check for switch off voltage reached -> end of measurement
+ */
+void checkStopCondition() {
+    if (sBatteryInfo.VoltageNoLoadMillivolt < BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt
+            && sBatteryInfo.VoltageNoLoadMillivolt > BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt - 100) {
+        /*
+         * Switch off condition met
+         */
+        setLoad(NO_LOAD);
+        eeprom_write_word(&EEPROMStartValues.CapacityMilliampereHour, sBatteryInfo.CapacityMilliampereHour);
+        sMeasurementState = STATE_DISCHARGE_FINISHED;
+#if !defined(ENABLE_PLOTTER_OUTPUT)
+        Serial.print(F("Switch off voltage "));
+        Serial.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt);
+        Serial.print(F(" V reached met, capacity="));
+        Serial.print(sBatteryInfo.CapacityMilliampereHour);
+        Serial.print(F(" mAh"));
+#endif
+#if defined(USE_LCD)
+        myLCD.setCursor(7, 0);
+        myLCD.print(F(" Finished"));
+#endif
+        // Play short melody
+        playEndTone();
     }
 }
 
@@ -645,40 +679,40 @@ uint8_t detectBatteryTypeIndex(uint16_t aBatteryVoltageMillivolt) {
 void detectAndPrintBatteryType() {
     setLoad(NO_LOAD);
     do {
-        getBatteryVoltage();
+        getBatteryVoltageMillivolt();
         printBatteryValues();
 
-        sCurrentBatteryTypeIndex = detectBatteryTypeIndex(sCurrentBatteryVoltageNoLoadMillivolt);
+        sBatteryInfo.TypeIndex = detectBatteryTypeIndex(sBatteryInfo.VoltageNoLoadMillivolt);
         // print values
 #if !defined(ENABLE_PLOTTER_OUTPUT)
-        Serial.print(BatteryTypeInfoArray[sCurrentBatteryTypeIndex].TypeName);
+        Serial.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].TypeName);
         Serial.println(F(" found"));
 #endif
 #if defined(USE_LCD)
-        if (sCurrentBatteryTypeIndex == NO_BATTERY_INDEX) {
+        if (sBatteryInfo.TypeIndex == NO_BATTERY_INDEX) {
             myLCD.setCursor(7, 1);
             myLCD.print(F(" No batt."));
         } else {
             myLCD.setCursor(0, 1);
-            myLCD.print(BatteryTypeInfoArray[sCurrentBatteryTypeIndex].TypeName);
+            myLCD.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].TypeName);
             myLCD.print(F(" found"));
         }
 #endif
         TogglePin(LED_BUILTIN);
         delay(500);
-    } while (sCurrentBatteryTypeIndex == NO_BATTERY_INDEX);
+    } while (sBatteryInfo.TypeIndex == NO_BATTERY_INDEX);
     delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #if defined(USE_LCD)
     LCDClearLine(1);
 #endif
-    setLoad(BatteryTypeInfoArray[sCurrentBatteryTypeIndex].LoadType);
+    setLoad(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].LoadType);
 }
 
 /*
  * Evaluates sMeasurementState and prints:
  *   - sCurrentBatteryVoltageMillivolt
- *   - sCurrentLoadMilliampere
- *   - sCurrentBatteryESRMilliohm
+ *   - sBatteryInfo.Milliampere
+ *   - sBatteryInfo.ESRMilliohm
  *   - optional sESRTestDeltaMillivolt or capacity
  * to Serial and LCD
  *
@@ -699,12 +733,12 @@ void printBatteryValues() {
          * Print voltage but not for results of EEPROM data
          */
 #if !defined(ENABLE_PLOTTER_OUTPUT)
-        printAsFloat(sCurrentBatteryVoltageNoLoadMillivolt);
+        printAsFloat(sBatteryInfo.VoltageNoLoadMillivolt);
         Serial.print(F(" V "));
 #endif
 #if defined(USE_LCD)
         myLCD.setCursor(0, 0);
-        LCDPrintAsFloat(sCurrentBatteryVoltageNoLoadMillivolt);
+        LCDPrintAsFloat(sBatteryInfo.VoltageNoLoadMillivolt);
         myLCD.print(F("V "));
 #endif
         // cursor is now at 7, 0
@@ -752,7 +786,7 @@ void printBatteryValues() {
         /*
          * Print milliampere
          */
-        sprintf_P(tString, PSTR("%4u"), sCurrentLoadMilliampere);
+        sprintf_P(tString, PSTR("%4u"), sBatteryInfo.Milliampere);
 #if !defined(ENABLE_PLOTTER_OUTPUT)
         Serial.print(tString);
         Serial.print(F(" mA at "));
@@ -774,12 +808,12 @@ void printBatteryValues() {
      */
 #if !defined(ENABLE_PLOTTER_OUTPUT)
     Serial.print(F(" ESR: "));
-    printAsFloat(sCurrentBatteryESRMilliohm);
+    printAsFloat(sBatteryInfo.ESRMilliohm);
     Serial.print(F(" Ohm "));
 #endif
 #if defined(USE_LCD)
     myLCD.setCursor(0, 1);
-    LCDPrintAsFloat(sCurrentBatteryESRMilliohm);
+    LCDPrintAsFloat(sBatteryInfo.ESRMilliohm);
     myLCD.print(F("\xF4   ")); // Ohm symbol
 #endif
 
@@ -792,7 +826,7 @@ void printBatteryValues() {
         Serial.print(F(" V "));
 #endif
 #if defined(USE_LCD)
-        LCDPrintAsFloat(sESRTestDeltaMillivolt);
+        LCDPrintAsFloat(sBatteryInfo.sESRTestDeltaMillivolt);
         myLCD.print(F("V "));
 #endif
 
@@ -800,7 +834,7 @@ void printBatteryValues() {
         /*
          * Print capacity
          */
-        sprintf_P(tString, PSTR("%4u"), sCurrentCapacityMilliamperehour);
+        sprintf_P(tString, PSTR("%4u"), sBatteryInfo.CapacityMilliampereHour);
 #if !defined(ENABLE_PLOTTER_OUTPUT)
         Serial.print(tString);
         Serial.print(F(" mAh"));
@@ -836,7 +870,7 @@ int8_t store4BitDeltas(int8_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddre
     }
     uint8_t tDelta = aDelta + 8;  // tDelta is positive :-)
 
-    if (sDeltaTempIsEmpty) {
+    if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
         *aDeltaTemp = tDelta * 16;
     } else {
         // upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
@@ -847,15 +881,21 @@ int8_t store4BitDeltas(int8_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddre
     return aDelta;
 }
 
-void storePlotterDataToEEPROM() {
-    if (sDeltaArrayIndex < 0) {
+/*
+ * Store values to EEPROM as 4 bit deltas and write them to EEPROM every second call
+ */
+void storeBatteryValues() {
+    if (ValuesForDeltaStorage.DeltaArrayIndex < 0) {
         /*
          * Initial values
+         * Storing them in a local structure and storing this, costs 50 bytes code size
+         * Storing them in a global structure and storing this, costs 30 bytes code size
          */
         clearEEPROMToZero();
-        eeprom_write_word(&sInitialDischargingVoltageEEPROM, sCurrentBatteryVoltageNoLoadMillivolt);
-        eeprom_write_word(&sInitialDischargingMilliampereEEPROM, sCurrentLoadMilliampere);
-        eeprom_write_byte(&BatteryTypeIndexEEPROM, sCurrentBatteryTypeIndex);
+
+        eeprom_write_word(&EEPROMStartValues.initialDischargingVoltage, sBatteryInfo.VoltageNoLoadMillivolt);
+        eeprom_write_word(&EEPROMStartValues.initialDischargingMilliampere, sBatteryInfo.Milliampere);
+        eeprom_write_byte(&EEPROMStartValues.BatteryTypeIndex, sBatteryInfo.TypeIndex);
 
         // Compute load resistance. Required for restoring battery capacity from stored data.
         // get rounded load resistor average value
@@ -864,48 +904,48 @@ void storePlotterDataToEEPROM() {
             tLoadResistorAverage += sCurrentLoadResistorHistory[i];
         }
         tLoadResistorAverage = (tLoadResistorAverage + (HISTORY_SIZE_FOR_AVERAGE / 2)) / HISTORY_SIZE_FOR_AVERAGE;
+        eeprom_write_word(&EEPROMStartValues.LoadResistorMilliohm, tLoadResistorAverage);
 
-        eeprom_write_word(&sLoadResistorEEPROM, tLoadResistorAverage);
 #if defined(ENABLE_PLOTTER_MILLIAMPERE_OUTPUT)
-        Serial.print(F("Voltage[mV] Current[mA] ESR[mOhm] LoadResistor="));
+        Serial.print(F("Voltage[mV] Current[mA] ESR[mOhm] LoadResistorMilliohm="));
 #else
-        Serial.print(F("Voltage[mV] ESR[mOhm] LoadResistor="));
+        Serial.print(F("Voltage[mV] ESR[mOhm] LoadResistorMilliohm="));
 #endif
         printAsFloat(tLoadResistorAverage);
         Serial.println(F("Ohm"));
-        sLastStoredBatteryVoltageNoLoadMillivolt = sCurrentBatteryVoltageNoLoadMillivolt;
-        sLastStoredBatteryMilliampere = sCurrentLoadMilliampere;
-        sDeltaTempIsEmpty = true;
-        sDeltaArrayIndex++;
+        ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt = sBatteryInfo.VoltageNoLoadMillivolt;
+        ValuesForDeltaStorage.lastStoredMilliampere = sBatteryInfo.Milliampere;
+        ValuesForDeltaStorage.tempDeltaIsEmpty = true;
+        ValuesForDeltaStorage.DeltaArrayIndex++;
 
-    } else if (sDeltaArrayIndex < NUMBER_OF_SAMPLES) {
+    } else if (ValuesForDeltaStorage.DeltaArrayIndex < NUMBER_OF_SAMPLES) {
         /*
          * Append value to delta values array
          */
-        int8_t tVoltageDelta = sCurrentBatteryVoltageNoLoadMillivolt - sLastStoredBatteryVoltageNoLoadMillivolt;
-        tVoltageDelta = store4BitDeltas(tVoltageDelta, &sVoltageDeltaTemp,
-                reinterpret_cast<uint8_t*>(&sVoltageDeltaArrayEEPROM[sDeltaArrayIndex]));
-        sLastStoredBatteryVoltageNoLoadMillivolt += tVoltageDelta;
+        int8_t tVoltageDelta = sBatteryInfo.VoltageNoLoadMillivolt - ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt;
+        tVoltageDelta = store4BitDeltas(tVoltageDelta, &ValuesForDeltaStorage.tempVoltageDelta,
+                reinterpret_cast<uint8_t*>(&sVoltageDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+        ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt += tVoltageDelta;
 
-        int8_t tMilliampereDelta = sCurrentLoadMilliampere - sLastStoredBatteryMilliampere;
-        tMilliampereDelta = store4BitDeltas(tMilliampereDelta, &sMilliampereDeltaTemp,
-                reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM[sDeltaArrayIndex]));
-        sLastStoredBatteryMilliampere += tMilliampereDelta;
+        int8_t tMilliampereDelta = sBatteryInfo.Milliampere - ValuesForDeltaStorage.lastStoredMilliampere;
+        tMilliampereDelta = store4BitDeltas(tMilliampereDelta, &ValuesForDeltaStorage.tempMilliampereDelta,
+                reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+        ValuesForDeltaStorage.lastStoredMilliampere += tMilliampereDelta;
 
-        if (sDeltaTempIsEmpty) {
-            sDeltaTempIsEmpty = false;
+        if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
+            ValuesForDeltaStorage.tempDeltaIsEmpty = false;
         } else {
-            sDeltaArrayIndex++; // increase every second sample
-            sDeltaTempIsEmpty = true;
+            ValuesForDeltaStorage.DeltaArrayIndex++; // increase every second sample
+            ValuesForDeltaStorage.tempDeltaIsEmpty = true;
         }
     }
-    Serial.print(sCurrentBatteryVoltageNoLoadMillivolt);
+    Serial.print(sBatteryInfo.VoltageNoLoadMillivolt);
     Serial.print(' ');
 #if defined(ENABLE_PLOTTER_MILLIAMPERE_OUTPUT)
-    Serial.print(sCurrentLoadMilliampere);
+    Serial.print(sBatteryInfo.Milliampere);
     Serial.print(' ');
 #endif
-    Serial.println(sCurrentBatteryESRMilliohm);
+    Serial.println(sBatteryInfo.ESRMilliohm);
 }
 
 void PrintValuesForPlotter(uint16_t aMilliampere, uint16_t aVoltageToPrint) {
@@ -917,7 +957,7 @@ void PrintValuesForPlotter(uint16_t aMilliampere, uint16_t aVoltageToPrint) {
     Serial.print(' ');
 #endif
     Serial.println(tESRToPrint);
-    sCurrentBatteryESRMilliohm = tESRToPrint;
+    sBatteryInfo.ESRMilliohm = tESRToPrint;
 }
 
 void printAsFloat(uint16_t aValueInMillis) {
@@ -935,6 +975,8 @@ void LCDPrintAsFloat(uint16_t aValueInMillis) {
  *      - compute capacity from current
  *      - restore battery type and capacity accumulator as well as mAh
  */
+int8_t sVoltageDeltaPrintArray[NUMBER_OF_SAMPLES]; // only used for printEEPROMData(), but using local variable increases code size by 100 bytes
+int8_t sMilliampereDeltaPrintArray[NUMBER_OF_SAMPLES];
 void printEEPROMData() {
     /*
      * First copy EEPROM to RAM
@@ -951,20 +993,20 @@ void printEEPROMData() {
             break;
         }
     }
-    tLastNonZeroIndex++; // convert to sDeltaArrayIndex from 0 to NUMBER_OF_SAMPLES
+    tLastNonZeroIndex++; // convert to ValuesForDeltaStorage.DeltaArrayIndex from 0 to NUMBER_OF_SAMPLES
 
-    sDeltaArrayIndex = tLastNonZeroIndex;
-    uint16_t tVoltageToPrint = eeprom_read_word(&sInitialDischargingVoltageEEPROM);
-    uint16_t tMilliampere = eeprom_read_word(&sInitialDischargingMilliampereEEPROM);
-    uint16_t tStoredCapacityMilliamperehour = eeprom_read_word(&sCurrentCapacityMilliamperehourEEPROM);
-    sCurrentLoadResistorHistory[0] = eeprom_read_word(&sLoadResistorEEPROM);
-    sCurrentBatteryTypeIndex = eeprom_read_byte(&BatteryTypeIndexEEPROM);
+    ValuesForDeltaStorage.DeltaArrayIndex = tLastNonZeroIndex;
+    uint16_t tVoltageToPrint = eeprom_read_word(&EEPROMStartValues.initialDischargingVoltage);
+    uint16_t tMilliampere = eeprom_read_word(&EEPROMStartValues.initialDischargingMilliampere);
+    uint16_t tStoredCapacityMilliampereHour = eeprom_read_word(&EEPROMStartValues.CapacityMilliampereHour);
+    sCurrentLoadResistorHistory[0] = eeprom_read_word(&EEPROMStartValues.LoadResistorMilliohm);
+    sBatteryInfo.TypeIndex = eeprom_read_byte(&EEPROMStartValues.BatteryTypeIndex);
 
 // Print plotter caption
 #if defined(ENABLE_PLOTTER_MILLIAMPERE_OUTPUT)
-    Serial.print(F("Voltage[mV] Current[mA] ESR[mOhm] LoadResistor="));
+    Serial.print(F("Voltage[mV] Current[mA] ESR[mOhm] LoadResistorMilliohm="));
 #else
-    Serial.print(F("Voltage[mV] ESR[mOhm] LoadResistor="));
+    Serial.print(F("Voltage[mV] ESR[mOhm] LoadResistorMilliohm="));
 #endif
     printAsFloat(sCurrentLoadResistorHistory[0]);
     Serial.println(F("Ohm"));
@@ -973,7 +1015,7 @@ void printEEPROMData() {
 
     PrintValuesForPlotter(tMilliampere, tVoltageToPrint);
 
-    for (int i = 0; i < sDeltaArrayIndex; ++i) {
+    for (int i = 0; i < ValuesForDeltaStorage.DeltaArrayIndex; ++i) {
 
         uint8_t t4BitVoltageDelta = sVoltageDeltaPrintArray[i];
         int8_t tFirst4BitDelta = (t4BitVoltageDelta >> 4) - 8;
@@ -997,37 +1039,39 @@ void printEEPROMData() {
     }
 
 #if defined(ENABLE_PLOTTER_MILLIAMPERE_OUTPUT)
-    Serial.print(F("Voltage[mV] Current[mA] ESR[mOhm] LoadResistor="));
+    Serial.print(F("Voltage[mV] Current[mA] ESR[mOhm] LoadResistorMilliohm="));
 #else
-        Serial.print(F("Voltage[mV] ESR[mOhm] LoadResistor="));
+        Serial.print(F("Voltage[mV] ESR[mOhm] LoadResistorMilliohm="));
 #endif
     printAsFloat(sCurrentLoadResistorHistory[0]);
     Serial.print(F("Ohm Capacity="));
 
-    uint16_t tCurrentCapacityMilliamperehourComputed = tCapacityAccumulator / (3600L / STORAGE_PERIOD_SECONDS);
-    if (tStoredCapacityMilliamperehour == 0) {
-        sCurrentCapacityMilliamperehour = tCurrentCapacityMilliamperehourComputed;
-        Serial.print(sCurrentCapacityMilliamperehour);
+    uint16_t tCurrentCapacityMilliampereHourComputed = tCapacityAccumulator / (3600L / STORAGE_PERIOD_SECONDS);
+    if (tStoredCapacityMilliampereHour == 0) {
+        sBatteryInfo.CapacityMilliampereHour = tCurrentCapacityMilliampereHourComputed;
+        Serial.print(sBatteryInfo.CapacityMilliampereHour);
     } else {
-        int16_t tCurrentCapacityMilliamperehourDelta = tStoredCapacityMilliamperehour - tCurrentCapacityMilliamperehourComputed;
-        sCurrentCapacityMilliamperehour = tStoredCapacityMilliamperehour;
-        Serial.print(sCurrentCapacityMilliamperehour);
+        int16_t tCurrentCapacityMilliampereHourDelta = tStoredCapacityMilliampereHour - tCurrentCapacityMilliampereHourComputed;
+        sBatteryInfo.CapacityMilliampereHour = tStoredCapacityMilliampereHour;
+        Serial.print(sBatteryInfo.CapacityMilliampereHour);
         Serial.print(F("mAh_Delta="));
-        Serial.print(tCurrentCapacityMilliamperehourDelta);
+        Serial.print(tCurrentCapacityMilliampereHourDelta);
     }
 
     Serial.print(F("mAh Duration="));
-    uint16_t tDurationMinutes = (sDeltaArrayIndex - 2) * (2 * STORAGE_PERIOD_SECONDS) / 60;
+    uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex - 2) * (2 * STORAGE_PERIOD_SECONDS) / 60;
     Serial.print(tDurationMinutes / 60);
     Serial.print(F("h_"));
     Serial.print(tDurationMinutes % 60);
     Serial.println(F("min"));
 
 // restore capacity accumulator
-    sCapacityAccumulator = sCurrentCapacityMilliamperehour * ((3600L * 1000) / SAMPLE_PERIOD_MILLIS);
+    sBatteryInfo.CapacityAccumulator = sBatteryInfo.CapacityMilliampereHour * ((3600L * ONE_SECOND_MILLIS) / SAMPLE_PERIOD_MILLIS);
 #if defined(USE_LCD)
     myLCD.setCursor(0, 0);
-    myLCD.print(F("Stored data     "));
+    myLCD.print(F("Stored data "));
+    myLCD.print(getVCCVoltage(), 1);
+    myLCD.print('V');
 #endif
     printBatteryValues();
     delay(2 * LCD_MESSAGE_PERSIST_TIME_MILLIS);
