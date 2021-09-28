@@ -15,6 +15,9 @@
 The internal resistance is an idicator of the health of the battery. E.g. if a NiMH battery has an ESR of **1 ohm**, it delivers **only 1 volt at a current of 200 mA**, which may be to low for the circuit to work properly.
 ESR values for NiMH can go down to excellent 0.05 ohm.
 
+Arduino plot for a good battery with 120 mOhm ESR.
+![870mAh_120mOhm](pictures/870mAh_120mOhm.png)
+
 ## Compile with the Arduino IDE
 Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the UltimateBatteryTester folder. 
 

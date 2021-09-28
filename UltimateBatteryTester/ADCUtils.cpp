@@ -86,6 +86,11 @@ uint16_t waitAndReadADCChannelWithReference(uint8_t aChannelNumber, uint8_t aRef
     checkAndWaitForReferenceAndChannelToSwitch(aChannelNumber, aReference);
     return readADCChannelWithReference(aChannelNumber, aReference);
 }
+
+void setADCMultiplexerAndReferenceForNextConversion(uint8_t aChannelNumber, uint8_t aReference) {
+    ADMUX = aChannelNumber | (aReference << SHIFT_VALUE_FOR_REFERENCE);
+}
+
 /*
  * @return original ADMUX register content for optional later restoring values
  * All experimental values are acquired by using the ADCSwitchingTest example from this library
@@ -101,7 +106,11 @@ uint8_t checkAndWaitForReferenceAndChannelToSwitch(uint8_t aChannelNumber, uint8
      */
     uint8_t tNewReference = (aReference << SHIFT_VALUE_FOR_REFERENCE);
     ADMUX = aChannelNumber | tNewReference;
+#if defined(INTERNAL2V56)
+    if ((tOldADMUX & MASK_FOR_ADC_REFERENCE) != tNewReference && (aReference == INTERNAL || aReference == INTERNAL2V56)) {
+#else
     if ((tOldADMUX & MASK_FOR_ADC_REFERENCE) != tNewReference && aReference == INTERNAL) {
+#endif
         /*
          * Switch reference from DEFAULT to INTERNAL
          */
@@ -333,15 +342,16 @@ float getVCCVoltageSimple(void) {
 uint16_t getVCCVoltageMillivoltSimple(void) {
     // use AVCC with external capacitor at AREF pin as reference
     uint16_t tVCC = readADCChannelWithReferenceMultiSamples(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT, 4);
-    return ((1023L * 1100 * 4) / tVCC);
+    return ((1023L * ADC_INTERNAL_REFERENCE_MILLIVOLT * 4) / tVCC);
 }
 
 /*
  * Gets the hypothetical 14 bit reading of VCC using 1.1 volt reference
- * Or getVCCVoltageMillivolt() * 1023 / 1100
+ * Similar to getVCCVoltageMillivolt() * 1023 / 1100
  */
 uint16_t getVCCVoltageReadingFor1_1VoltReference(void) {
-    uint16_t tVCC = waitAndReadADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT); // 225 for 1.1 V at 5 V VCC
+    checkAndWaitForReferenceAndChannelToSwitch(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT);
+    uint16_t tVCC = readADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT); // 225 for 1.1 V at 5 V VCC
     /*
      * Do not switch back ADMUX to enable checkAndWaitForReferenceAndChannelToSwitch() to work correctly for the next measurement
      */
@@ -354,11 +364,12 @@ uint16_t getVCCVoltageReadingFor1_1VoltReference(void) {
  * !!! Resolution is only 20 millivolt !!!
  */
 uint16_t getVCCVoltageMillivolt(void) {
-    uint16_t tVCC = waitAndReadADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT);
+    checkAndWaitForReferenceAndChannelToSwitch(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT);
+    uint16_t tVCC = readADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT);
     /*
      * Do not switch back ADMUX to enable checkAndWaitForReferenceAndChannelToSwitch() to work correctly for the next measurement
      */
-    return ((1023L * 1100) / tVCC);
+    return ((1023L * ADC_INTERNAL_REFERENCE_MILLIVOLT) / tVCC);
 }
 
 uint16_t printVCCVoltageMillivolt(Print *aSerial) {
@@ -393,7 +404,7 @@ float getTemperature(void) {
     // use internal 1.1 volt as reference
     checkAndWaitForReferenceAndChannelToSwitch(ADC_TEMPERATURE_CHANNEL_MUX, INTERNAL);
     // assume the signal has noise, but never verified :-(
-    float tTemp = (readADCChannelWithReferenceOversample(ADC_TEMPERATURE_CHANNEL_MUX, INTERNAL, 2) - 317);
+    float tTemp = (readADCChannelWithReferenceOversample(ADC_TEMPERATURE_CHANNEL_MUX, INTERNAL, 1) - 317);
     return (tTemp / 1.22);
 #endif
 }
