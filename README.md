@@ -16,7 +16,7 @@
 The internal resistance is an idicator of the health of the battery. E.g. if a NiMH battery has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA**, which may be to low for the circuit to work properly.
 ESR values for NiMH can go down to excellent 0.05 &ohm;.
 
-Arduino plot for a good battery with 120 m&ohm;ESR.
+Arduino plot for a good battery with 120 m&ohm; ESR.
 ![870mAh_120mOhm](pictures/870mAh_120mOhm.png)
 
 ## Compile with the Arduino IDE
@@ -37,26 +37,32 @@ Battery Tester
 1.1 Feb 17 2022
 ```
 Then it prints the data read from EEPROM to serial monitor and displays ESR and capacity for 4 seconds.
-The Arduino supply voltage (VCC) is displayed in the first row.
+The Arduino supply voltage (VCC) together with the message "Stored data" is displayed in the first row for 2 seconds.
+Then the message "dbl press = stop" is displayed for another 2 seconds.
 
 <pre>
 4.8V Stored data
+0.222&ohm;   1212mAh
+</pre>
+<pre>
+dbl press = stop
 0.222&ohm;   1212mAh
 </pre>
 
 ### Mode DetectingBattery
 If no battery is attached, you see:
 
-<pre><code>
+<pre>
 0.000V
 0.222&ohm;  No batt.
-</code></pre>
+</pre>
+
 If a battery is attached, you see e.g.
 
-<pre>
+```
 1.247V
 NiCd NiMH found
-</pre>
+```
 for 2 seconds and then mode is **switched to InitialESRMeasurement**.
 
 ### Mode InitialESRMeasurement
@@ -66,10 +72,11 @@ A button press during the 30 seconds **switches directly to mode StoreToEEPROM**
 This enables to connect the tester to the Arduino Serial Plotter at any time in the measurement without loosing data already acquired.
 Because connecting to the Serial Plotter always resets the tester, we must be able to avoid to start a fresh measurement after reset.
 
-```
+<pre>
 1.247V 12 331mA
 0.688&ohm;   0.228V
-```
+</pre>
+
 In the first row the **no load voltage** of the battery, the **30 second countdown** and the **load current** is displayed.
 In the second row the **ESR** and the **difference between the load and no load voltage**, used to compute the ESR, is dispayed.
 
@@ -77,7 +84,7 @@ In the second row the **ESR** and the **difference between the load and no load 
 - Every second, a sample is taken and displayed.
 - Every 30 seconds the sample is stored.
 - Every 60 seconds 2 compressed samples are stored in EEPROM.
-A button press respond with `Capacity stored`, writes the current capacity to EEPROM and **switches to mode Stopped**.
+A button press displays `Capacity stored` for 2 seconds, writes the current capacity to EEPROM and **switches to mode Stopped**.
 
 ### Mode Stopped
 The battery no load voltage is displayed in the first row.
