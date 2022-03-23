@@ -7,9 +7,10 @@
 
 # Features
 - **Measures the ESR (equivalent series resistance) of the battery.** This is an idicator of the health of the battery.
-- Stores voltage and ESR graph for up to 16 hours in EEPROM while discharging.
+- Stores voltage, current and ESR graph for up to 11 hours in EEPROM while discharging.
 - Current measurement or EEPROM stored measurement graph can be displayed with Arduino Plotter.
-- You can continue interrupted dicharge measurements.
+- Display of no load voltage for independence of load (resistor).
+- Easy continuing of interrupted dicharge measurements.
 - Display of ESR, voltage, current and capacity on a 1602 LCD.
 
 # Li-Ion battery capacity
@@ -24,7 +25,7 @@ The internal resistance is an indicator of the health of the cell. E.g. if a NiM
 ESR values for NiMH can go down to excellent 0.05 &ohm;.<br/>
 Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;.
 
-Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement.
+Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement. The displayed voltage is the "no load" voltage, to be independent of the current load resistor.
 ![2155mAh_53mOhm](pictures/2155mAh_53mOhm.png)
 
 Arduino plot for a **NiMH cell** with 55 m&ohm; ESR.
@@ -64,6 +65,8 @@ cut off is high
 </pre>
 
 and then mode is **switched to DetectingBattery**.
+A double press during 2 seconds always displays `Stop measurement` for 2 seconds and then **switches to mode Stopped**.
+
 
 ## Mode DetectingBattery
 If no battery is inserted, the Arduino supply voltage (VCC) together with the message "No batt. is displayed in the first row until a battery is inserted.
@@ -113,7 +116,7 @@ In the second row the **ESR** and the **difference between the load and no load 
 - Every second, a sample is taken and displayed.
 - Every 60 seconds the sample is stored.
 - Every 120 seconds 2 compressed samples are stored to EEPROM and the counter between the voltage and the current in the first row is incremented.
-A button press displays `Capacity stored` for 2 seconds, writes the current capacity to EEPROM and **switches to mode Stopped**.
+If the no load voltage drops below the cut off voltage or the start/stop button is pressed displays `Capacity stored` for 2 seconds, writes the current capacity to EEPROM and **switches to mode Stopped**.
 
 <pre>
 1.277V  38 407mA
@@ -123,9 +126,13 @@ A button press displays `Capacity stored` for 2 seconds, writes the current capa
 
 ## Mode Stopped
 The battery no load voltage is displayed in the first row.
-A press of the start/stop button **switches to mode InitialESRMeasurement**.
 
-A double press during 2 seconds always displays `Stop measurement` for 2 seconds and then **switches to mode Stopped**.
+<pre>
+1.120V Finished (or Stopped)
+0.073&ohm;    467mAh
+</pre>
+
+A press of the start/stop button **switches to mode DetectingBattery**.
 
 
 # Revision History

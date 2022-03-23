@@ -6,6 +6,8 @@
  *  If measurement is stopped, it can be started by another press
  *  If pin 11 connected to ground, verbose output for Arduino Serial Monitor is enabled. This is not suitable for Arduino Plotter.
  *
+ *  Stored and displayed ESR is the average of the ESR's of the last storage period (1 min)
+ *
  *  Data is stored to EEPROM in a compressed format.
  *  This allows to store 660 samples of voltage and milliampere and results in 11 h at 1 minute per sample (5 h 30 min at 30 seconds per sample).
  *  For a LIPO this is equivalent to around 3300 mAh.
@@ -14,6 +16,7 @@
  *  The plotter values are stored as 4 bit deltas and written to EEPROM every second sample.
  *  The upper 4 bit store the first value, lower 4 bit store the second value.
  *  The capacity is stored at end of measurement or on button press during the storage.
+ *
  *
  *  Copyright (C) 2021-2022  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
@@ -52,6 +55,7 @@
  */
 
 #define VERSION_EXAMPLE "2.1"
+//#define DEBUG
 
 #define LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT        3500 // Switch off voltage for Li-ion capacity measurement
 #define LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for Li-ion capacity measurement
@@ -63,6 +67,9 @@
 #ifndef ADC_INTERNAL_REFERENCE_MILLIVOLT
 #define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100L    // Value measured at the AREF pin
 #endif
+
+#define MILLIS_IN_ONE_SECOND 1000L
+#define SECONDS_IN_ONE_MINUTE 60L
 
 /*
  * Activate the type of LCD you use
@@ -84,6 +91,7 @@
 #define BATTERY_DETECTION_MINIMAL_MILLIVOLT 100
 /*
  * Pin and ADC definitions
+ * Start/Stop button is connected to INT0 pin 2
  * Pin 3 to 8 are used for parallel LCD connection
  */
 #define ADC_CHANNEL_VOLTAGE          0 // ADC0 for voltage measurement
@@ -107,8 +115,8 @@
 #define SHUNT_RESISTOR_MILLIOHM                 2000L  // 2 ohm
 #define LOAD_LOW_MILLIOHM                       (1000 + SHUNT_RESISTOR_MILLIOHM) // Additional 1 ohm
 #define LOAD_HIGH_MILLIOHM                      (10 * 1000 + SHUNT_RESISTOR_MILLIOHM) // Additional 10 ohm
-#define ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE    2L       // Divider with 100 kOhm and 100 kOhm
-#define ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE   4L       // Divider with 100 kOhm and 33.333 kOhm
+#define ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE    2L       // Divider with 100 kOhm and 100 kOhm -> 2.2 V range
+#define ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE   4L       // Divider with 100 kOhm and 33.333 kOhm -> 4.4 V range
 
 #define NO_LOAD     0
 #define LOW_LOAD    1 // 12 ohm
@@ -129,8 +137,8 @@ struct BatteryTypeInfoStruct {
 struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 0, 1000, 0, 0, NO_LOAD }, { "NiCd NiMH ", 1200, 1420, 1100,
         1000, HIGH_LOAD }, { "Alkali    ", 1500, 1550, 1300, 1000, HIGH_LOAD }, { "NiZn batt.", 1650, 1800, 1500, 1300, HIGH_LOAD },
         { "LiFePO4   ", 3200, 3400, 3000, 2700, LOW_LOAD }, { "LiIo batt.", 3700, 4300, LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT,
-        LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW, LOW_LOAD }, { "Voltage   ", 0, 0, 0, 0,
-        NO_LOAD } };
+        LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW, LOW_LOAD }, { "9 V Block ", 9000, 9200, 8200, 7800, LOW_LOAD }, { "Voltage   ", 0, 0,
+                0, 0, NO_LOAD } };
 
 /*
  * Current battery values set by getBatteryValues()
@@ -153,11 +161,17 @@ bool sBatteryWasInserted = false;
 
 /*
  * Current value is in sCurrentLoadResistorHistory[0]. Used for computing and storing the average.
- * Precise load resistor value is required for restoring ESR from stored voltage and current.
  */
-#define HISTORY_SIZE_FOR_AVERAGE 16
-uint16_t sCurrentLoadResistorHistory[HISTORY_SIZE_FOR_AVERAGE];
+#define HISTORY_SIZE_FOR_LOAD_RESISTOR_AVERAGE 16
+uint16_t sCurrentLoadResistorHistory[HISTORY_SIZE_FOR_LOAD_RESISTOR_AVERAGE];
 uint16_t sCurrentLoadResistorAverage;
+
+/*
+ * Current value is in sESRHistory[0]. The average is stored in sBatteryInfo.Milliohm.
+ * For 9V and 60 mA we have a resolution of 0.3 ohm so we need an average.
+ */
+#define HISTORY_SIZE_FOR_ESR_AVERAGE ((STORAGE_PERIOD_SECONDS * SAMPLE_PERIOD_MILLIS) / MILLIS_IN_ONE_SECOND) // 60
+uint16_t sESRHistory[HISTORY_SIZE_FOR_ESR_AVERAGE];
 
 /*
  * EEPROM store
@@ -202,7 +216,7 @@ void getBatteryCurrent();
 void getBatteryValues();
 bool checkStopCondition();
 bool checkForVCCUndervoltage();
-bool isBatteryRemoved(uint16_t aLastBatteryVoltageNoLoadMillivolt);
+bool isBatteryRemoved();
 void playEndTone(void);
 void setLoad(uint8_t aNewLoadState);
 void printBatteryValues();
@@ -215,7 +229,6 @@ void readAndPrintEEPROMData();
 void printButtonUsageMessage();
 
 void switchToStateDetectingBattery();
-void switchToStateDetectingBatteryInitially();
 void switchToStateInitialESRMeasurement();
 void switchToStateStoreToEEPROM();
 void switchToStateStopped(bool aWriteToLCD = true);
@@ -261,9 +274,6 @@ LiquidCrystal_I2C myLCD(0x27, LCD_COLUMNS, LCD_ROWS);  // set the LCD address to
 LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
 #endif
 
-#define MILLIS_IN_ONE_SECOND 1000L
-#define SECONDS_IN_ONE_MINUTE 60L
-
 /*
  * Loop timing
  */
@@ -288,20 +298,19 @@ unsigned long sLastMillisOfSample = 0;
 unsigned long sLastMillisOfBatteryDetection = 0;
 unsigned long sLastMillisOfVCCCheck = VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND; // to force first check at startup
 unsigned long sFirstMillisOfESRCheck = 0;
+uint16_t sVCC;
 
 /*
  * Tester state machine
  */
 #define STATE_SETUP_AND_READ_EEPROM         0
-#define STATE_DETECTING_BATTERY_INTIALLY    1
+#define STATE_DETECTING_BATTERY             1
 #define STATE_INITIAL_ESR_MEASUREMENT       2 // only voltage and ESR measurement every n seconds for STATE_INITIAL_ESR_DURATION_SECONDS seconds
 #define STATE_STORE_TO_EEPROM               3
 #define STATE_STOPPED                       4 // Switch off voltage reached, until removal of battery
-#define STATE_DETECTING_BATTERY             5
 volatile uint8_t sMeasurementState = STATE_SETUP_AND_READ_EEPROM;
 
 bool sOnlyPlotterOutput; // contains the value of the pin PIN_SERIAL_MONITOR_OUTPUT
-//#define DEBUG
 
 /*
  * Program starts here
@@ -362,7 +371,7 @@ void setup() {
      */
     readAndPrintEEPROMData();
 
-    switchToStateDetectingBatteryInitially();
+    switchToStateDetectingBattery();
 }
 
 /*
@@ -381,7 +390,7 @@ void loop() {
         }
     }
 
-    if (sMeasurementState == STATE_DETECTING_BATTERY_INTIALLY || sMeasurementState == STATE_DETECTING_BATTERY) {
+    if (sMeasurementState == STATE_DETECTING_BATTERY) {
         if (millis() - sLastMillisOfBatteryDetection >= BATTERY_DETECTION_PERIOD_MILLIS) {
             sLastMillisOfBatteryDetection = millis();
             /*
@@ -389,7 +398,7 @@ void loop() {
              */
             if (detectAndPrintBatteryType()) {
                 // we waited 2 seconds in detectAndPrintBatteryType(), so must check if mode has not changed
-                if (sMeasurementState == STATE_DETECTING_BATTERY_INTIALLY || sMeasurementState == STATE_DETECTING_BATTERY) {
+                if (sMeasurementState == STATE_DETECTING_BATTERY) {
                     switchToStateInitialESRMeasurement();
                     // If found, print button usage
                     printButtonUsageMessage();
@@ -397,9 +406,10 @@ void loop() {
             } else {
                 // Not inserted, so print VCC voltage initially
 #if defined(USE_LCD)
-                if (sMeasurementState == STATE_DETECTING_BATTERY_INTIALLY) {
+                if (sMeasurementState == STATE_DETECTING_BATTERY) {
                     myLCD.setCursor(0, 0);
-                    myLCD.print(getVCCVoltage(), 2);
+                    sVCC = getVCCVoltageMillivolt();
+                    myLCD.print(sVCC / 1000.0, 2);
                     myLCD.print(F("V"));
                 }
 #endif
@@ -411,7 +421,6 @@ void loop() {
         /*
          * Do all this every second
          */
-        uint16_t tLastBatteryVoltageNoLoadMillivolt = sBatteryInfo.VoltageNoLoadMillivolt; // store current no load voltage for display at "No batt." detection
 
         if (sMeasurementState == STATE_STOPPED) {
             getBatteryVoltageMillivolt(); // get battery no load voltage
@@ -419,7 +428,7 @@ void loop() {
             getBatteryValues(); // must be called only once per sample!
         }
 
-        if (isBatteryRemoved(tLastBatteryVoltageNoLoadMillivolt)) {
+        if (isBatteryRemoved()) {
             switchToStateDetectingBattery(); // switch back to start
         }
 
@@ -459,9 +468,12 @@ void loop() {
             if (millis() - sLastMillisOfStorage >= STORAGE_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND) {
                 sLastMillisOfStorage = millis();
                 storeBatteryValues();
-            }
-            if (checkStopCondition()) { // Check for switch off voltage reached -> end of measurement
-                switchToStateStopped(false); // keep LCD message "finished"
+                /*
+                 * Check for switch off voltage reached, if stored to EEPROM
+                 */
+                if (ValuesForDeltaStorage.tempDeltaIsEmpty && checkStopCondition()) {
+                    switchToStateStopped(false); // keep LCD message "finished"
+                }
             }
         }
 
@@ -480,13 +492,6 @@ void switchToStateDetectingBattery() {
     if (!sOnlyPlotterOutput) {
         Serial.println(F("Switch to state DETECTING BATTERY"));
     }
-}
-
-void switchToStateDetectingBatteryInitially() {
-    sMeasurementState = STATE_DETECTING_BATTERY_INTIALLY;
-    if (!sOnlyPlotterOutput) {
-        Serial.println(F("Switch to state DETECTING BATTERY INITIALLY"));
-    }
     sLastVoltageNoLoadMillivoltForBatteryCheck = 0XFFFF; // to force first check if voltage is 0
 }
 
@@ -496,6 +501,7 @@ void switchToStateInitialESRMeasurement() {
         Serial.println(F("Switch to state INITIAL ESR MEASUREMENT"));
     }
     sFirstMillisOfESRCheck = millis();
+    memset(sESRHistory, 0, sizeof(sESRHistory));
 }
 
 void switchToStateStoreToEEPROM() {
@@ -524,6 +530,8 @@ void switchToStateStopped(bool aWriteToLCD) {
             myLCD.print(F("Stop measurement"));
             delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
             LCDClearLine(0);
+            myLCD.setCursor(9, 0);
+            myLCD.print(F("Stopped"));
 #endif
         }
     }
@@ -583,7 +591,8 @@ void printButtonUsageMessage() {
  * Makes only sense for battery operated mode which in turn requires a LCD.
  */
 bool checkForVCCUndervoltage() {
-    if (getVCCVoltageMillivolt() < VCC_CHECK_THRESHOLD_MILLIVOLT) {
+    sVCC = getVCCVoltageMillivolt();
+    if (sVCC < VCC_CHECK_THRESHOLD_MILLIVOLT) {
 #if defined(USE_LCD)
         myLCD.setCursor(0, 1);
         myLCD.print(F("VCC undervoltage"));
@@ -602,20 +611,10 @@ bool checkForVCCUndervoltage() {
  * Check for removed battery
  * @return true if battery removed
  */
-bool isBatteryRemoved(uint16_t aLastBatteryVoltageNoLoadMillivolt) {
+bool isBatteryRemoved() {
 
     // check only if battery was inserted before
     if (sBatteryWasInserted && sBatteryInfo.VoltageNoLoadMillivolt < BATTERY_DETECTION_MINIMAL_MILLIVOLT) {
-#if defined(USE_LCD)
-        // move current displayed voltage right if we already have one
-        for (int i = 0; i < 10; ++i) {
-            myLCD.setCursor(i, 0);
-            myLCD.print(' ');
-            LCDPrintAsFloat(aLastBatteryVoltageNoLoadMillivolt);
-            myLCD.print('V');
-            delay(120);
-        }
-#endif
         if (!sOnlyPlotterOutput) {
             Serial.println(F("Battery removing detected"));
         }
@@ -636,7 +635,7 @@ bool isBatteryRemoved(uint16_t aLastBatteryVoltageNoLoadMillivolt) {
  *      We can be called recursively, i.e. while waiting for 2 seconds we can be called for double press
  */
 void handleStartStopButtonPress(bool aButtonToggleState) {
-    if (sMeasurementState == STATE_SETUP_AND_READ_EEPROM || sMeasurementState == STATE_DETECTING_BATTERY_INTIALLY) {
+    if (sMeasurementState == STATE_SETUP_AND_READ_EEPROM || sMeasurementState == STATE_DETECTING_BATTERY) {
         if (!sOnlyPlotterOutput) {
             Serial.println(F("Early press ignored"));
         }
@@ -677,7 +676,7 @@ void handleStartStopButtonPress(bool aButtonToggleState) {
             myLCD.print(F("Capacity stored "));
             delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #else
-                delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+            delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
             switchToStateStopped(); // no check for double press required here :-)
 
@@ -737,24 +736,24 @@ void setLoad(uint8_t aNewLoadState) {
         sBatteryInfo.LoadState = aNewLoadState;
 
 #ifdef DEBUG
-            Serial.print(F("Set load to "));
+        Serial.print(F("Set load to "));
 #endif
 
         if (aNewLoadState == NO_LOAD) {
 #ifdef DEBUG
-                Serial.println(F("off"));
+            Serial.println(F("off"));
 #endif
             digitalWrite(PIN_LOAD_LOW, LOW);    // disable 12 ohm load
             digitalWrite(PIN_LOAD_HIGH, LOW);    // disable 3 ohm load
         } else if (aNewLoadState == LOW_LOAD) {
 #ifdef DEBUG
-                Serial.println(F("low"));
+            Serial.println(F("low"));
 #endif
             digitalWrite(PIN_LOAD_LOW, HIGH);    // enable 12 ohm load
             digitalWrite(PIN_LOAD_HIGH, LOW);    // disable 3 ohm load
         } else {
 #ifdef DEBUG
-                Serial.println(F("high"));
+            Serial.println(F("high"));
 #endif
             digitalWrite(PIN_LOAD_LOW, LOW);    // disable 12 ohm load
             digitalWrite(PIN_LOAD_HIGH, HIGH);    // enable 3 ohm load
@@ -765,7 +764,10 @@ void setLoad(uint8_t aNewLoadState) {
 
 /*
  * Sets VoltageNoLoadMillivolt or VoltageLoadMillivolt
- * Provides automatic range switch between 2.2 and 4.4 volt range
+ * Provides automatic range switch between 2.2, 4.4 and 14 (to 20) volt range
+ * The ranges are realized by a divider with 100 kOhm and 100 kOhm -> 2.2 V range and a divider with 100 kOhm and 33.333 kOhm -> 4.4 v range
+ * The 14 volt range is realized by using the 4.4 volt range with VCC (of at least 3.5 volt) as reference.
+ * With 5 volt VCC this range goes up to 20 volt.
  * Does not affect the loads
  */
 void getBatteryVoltageMillivolt() {
@@ -780,9 +782,11 @@ void getBatteryVoltageMillivolt() {
         sVoltageRangeIsLow = false;
         pinMode(PIN_VOLTAGE_RANGE_EXTENSION, OUTPUT);
         digitalWrite(PIN_VOLTAGE_RANGE_EXTENSION, LOW);    // required???
+#ifdef DEBUG
         if (!sOnlyPlotterOutput) {
-            Serial.println(F("Switch to high voltage range"));
+            Serial.println(F("Switch to 4.4 V range"));
         }
+#endif
         tInputVoltageRaw = readADCChannelWithReference(ADC_CHANNEL_VOLTAGE, INTERNAL);
     }
     if (!sVoltageRangeIsLow) {
@@ -791,30 +795,39 @@ void getBatteryVoltageMillivolt() {
             sVoltageRangeIsLow = true;
             pinMode(PIN_VOLTAGE_RANGE_EXTENSION, INPUT);
             digitalWrite(PIN_VOLTAGE_RANGE_EXTENSION, LOW);
+#ifdef DEBUG
             if (!sOnlyPlotterOutput) {
-                Serial.println(F("Switch to low voltage range"));
+                Serial.println(F("Switch to 2.2 V range"));
             }
+#endif
             tInputVoltageRaw = readADCChannelWithReference(ADC_CHANNEL_VOLTAGE, INTERNAL);
         } else if (tInputVoltageRaw >= 0x3F0) {
+            /*
+             * Here we have 17 mV resolution
+             * which leads to e.g. 0.3 ohm resolution at 9V and 60 mA
+             */
+#ifdef DEBUG
             if (!sOnlyPlotterOutput) {
-                Serial.println(F("Switch to highest voltage range"));
+                Serial.print(F("Switch to "));
+                Serial.print(sVCC / 1000.0, 3);
+                Serial.println(F(" V range"));
             }
+#endif
             // switch to highest voltage range by using VCC as reference
             uint16_t tReadoutFor1_1Reference = waitAndReadADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT); // 225 at 5 volt VCC
-#ifdef DEBUG
-                Serial.print(tReadoutFor1_1Reference);
-#endif
             tInputVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_VOLTAGE, DEFAULT);
 #ifdef DEBUG
-                Serial.print(F(" - "));
-                Serial.println(tInputVoltageRaw);
+            Serial.print(tInputVoltageRaw);
+            Serial.print(F(" / "));
+            Serial.println(tReadoutFor1_1Reference);
 #endif
+            // Adjust tInputVoltageRaw to a range above 1023 for computation of voltage below
             tInputVoltageRaw = (tInputVoltageRaw * 1023L) / tReadoutFor1_1Reference;
         }
     }
 #ifdef DEBUG
-        Serial.print(F("tInputVoltageRaw="));
-        Serial.print(tInputVoltageRaw);
+    Serial.print(F("tInputVoltageRaw="));
+    Serial.print(tInputVoltageRaw);
 #endif
     /*
      * Compute voltage
@@ -835,12 +848,15 @@ void getBatteryVoltageMillivolt() {
     }
 
 #ifdef DEBUG
-        Serial.print(F(" -> "));
-        Serial.print(tCurrentBatteryVoltageMillivolt);
-        Serial.println(F(" mV"));
+    Serial.print(F(" -> "));
+    Serial.print(tCurrentBatteryVoltageMillivolt);
+    Serial.println(F(" mV"));
 #endif
 }
 
+/*
+ * Maximal current for a 2 ohm shunt resistor is 550 mA, and resolution is 0.54 mA.
+ */
 void getBatteryCurrent() {
     uint16_t tShuntVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_CURRENT, INTERNAL);
     sBatteryInfo.Milliampere =
@@ -871,7 +887,31 @@ void getBatteryValues() {
         sBatteryInfo.CapacityMilliampereHour = sBatteryInfo.CapacityAccumulator
                 / ((3600L * MILLIS_IN_ONE_SECOND) / SAMPLE_PERIOD_MILLIS);    // = / 3600 for 1 s sample period
 
-        sBatteryInfo.Milliohm = (sBatteryInfo.sESRDeltaMillivolt * 1000L) / sBatteryInfo.Milliampere;
+        /*
+         * Compute sESRAverage
+         * Shift history array and insert current value
+         * compute
+         */
+        uint8_t tESRAverageHistoryCounter = 1; // we always have sCurrentLoadResistorHistory[0]
+        uint32_t tESRAverage = 0;
+        for (uint_fast8_t i = HISTORY_SIZE_FOR_ESR_AVERAGE - 1; i > 0; --i) {
+            if (sESRHistory[i - 1] != 0) {
+#ifdef DEBUG
+                Serial.print(sESRHistory[i - 1]);
+                Serial.print('+');
+#endif
+                tESRAverageHistoryCounter++; // count only valid entries
+                tESRAverage += sESRHistory[i - 1];
+                sESRHistory[i] = sESRHistory[i - 1];
+            }
+        }
+        sESRHistory[0] = (sBatteryInfo.sESRDeltaMillivolt * 1000L) / sBatteryInfo.Milliampere;
+#ifdef DEBUG
+        Serial.print(sESRHistory[0]);
+        Serial.println();
+#endif
+        tESRAverage += sESRHistory[0];
+        sBatteryInfo.Milliohm = (tESRAverage + (tESRAverageHistoryCounter / 2)) / tESRAverageHistoryCounter;
 
         /*
          * Compute sCurrentLoadResistorAverage if array is full
@@ -879,18 +919,19 @@ void getBatteryValues() {
          * Shift load resistor history array and insert current value
          */
         uint32_t tLoadResistorAverage = 0;
-        for (uint_fast8_t i = HISTORY_SIZE_FOR_AVERAGE - 1; i > 0; --i) {
+        for (uint_fast8_t i = HISTORY_SIZE_FOR_LOAD_RESISTOR_AVERAGE - 1; i > 0; --i) {
             tLoadResistorAverage += sCurrentLoadResistorHistory[i - 1];
             sCurrentLoadResistorHistory[i] = sCurrentLoadResistorHistory[i - 1];
         }
         sCurrentLoadResistorHistory[0] = (sBatteryInfo.VoltageLoadMillivolt * 1000L / sBatteryInfo.Milliampere);
         tLoadResistorAverage += sCurrentLoadResistorHistory[0];
-        if (sCurrentLoadResistorHistory[HISTORY_SIZE_FOR_AVERAGE - 1] != 0) {
+        if (sCurrentLoadResistorHistory[HISTORY_SIZE_FOR_LOAD_RESISTOR_AVERAGE - 1] != 0) {
             /*
              * as soon as array is filled up, compute rounded average load resistance value each time.
              * Required for restoring battery capacity from stored data.
              */
-            sCurrentLoadResistorAverage = (tLoadResistorAverage + (HISTORY_SIZE_FOR_AVERAGE / 2)) / HISTORY_SIZE_FOR_AVERAGE;
+            sCurrentLoadResistorAverage = (tLoadResistorAverage + (HISTORY_SIZE_FOR_LOAD_RESISTOR_AVERAGE / 2))
+                    / HISTORY_SIZE_FOR_LOAD_RESISTOR_AVERAGE;
         }
     }
 }
@@ -987,12 +1028,8 @@ bool detectAndPrintBatteryType() {
 
     if (sBatteryInfo.TypeIndex == NO_BATTERY_INDEX) {
 #if defined(USE_LCD)
-        if (sMeasurementState == STATE_DETECTING_BATTERY_INTIALLY) {
-            myLCD.setCursor(5, 0);
-            myLCD.print(F("  "));
-        } else {
-            myLCD.setCursor(7, 1);
-        }
+        myLCD.setCursor(5, 0);
+        myLCD.print(F("  "));
         myLCD.print(F(" No batt."));
 #endif
         return false;
@@ -1004,11 +1041,9 @@ bool detectAndPrintBatteryType() {
         myLCD.setCursor(0, 1);
         myLCD.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].TypeName);
         myLCD.print(F(" found"));
-        if (sMeasurementState == STATE_DETECTING_BATTERY_INTIALLY) {
-            // The current battery voltage is displayed, so clear "No batt." message selectively
-            myLCD.setCursor(8, 0);
-            myLCD.print(F("        "));
-        }
+        // The current battery voltage is displayed, so clear "No batt." message selectively
+        myLCD.setCursor(8, 0);
+        myLCD.print(F("        "));
         delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
         LCDClearLine(1);
 #endif
@@ -1062,8 +1097,7 @@ void printBatteryValues() {
 #endif
         // cursor is now at 7, 0
 
-        if (tMeasurementState == STATE_DETECTING_BATTERY_INTIALLY || tMeasurementState == STATE_DETECTING_BATTERY
-                || tMeasurementState == STATE_STOPPED) {
+        if (tMeasurementState == STATE_DETECTING_BATTERY || tMeasurementState == STATE_STOPPED) {
             //Print only voltage for this states
             return;
         }
@@ -1203,7 +1237,11 @@ void clearEEPROMTo_FF() {
  * upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
  * @return clipped aDelta | aDelta which is stored
  */
-int8_t store4BitDeltas(int8_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddressToStoreValue) {
+int16_t store4BitDeltas(int16_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddressToStoreValue) {
+    if (!sOnlyPlotterOutput) {
+        Serial.print(' ');
+        Serial.print(aDelta);
+    }
     // clip aDelta to the available range of -8 to 7
     if (aDelta > 7) {
         aDelta = 7;
@@ -1212,20 +1250,19 @@ int8_t store4BitDeltas(int8_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddre
     }
     /*
      * convert delta to an unsigned value by adding 8 => -8 to 7 -> 0 to F
-     * F is +7, 8 is 0, 0 is -8 tDelta is positive :-)
+     * F is +7, 8 is 0, 0 is -8 tDelta is positive now :-)
      */
     uint8_t tDelta = aDelta + 8;
 
+    uint8_t tDeltaToStore;
     if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
-        *aDeltaTemp = tDelta << 4; // Store in upper 4 bit
+        tDeltaToStore = tDelta << 4; // Store in upper 4 bit
+        *aDeltaTemp = tDeltaToStore;
     } else {
         // upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
-        uint8_t tDeltaToStore = *aDeltaTemp | tDelta;
+        tDeltaToStore = *aDeltaTemp | tDelta;
         eeprom_write_byte(aEEPROMAddressToStoreValue, tDeltaToStore);
-        if (!sOnlyPlotterOutput) {
-            Serial.print(F(" 0x"));
-            Serial.print(tDeltaToStore, HEX);
-        }
+
         if (tDeltaToStore != eeprom_read_byte(aEEPROMAddressToStoreValue)) {
             // Yes, I have seen this (starting with index 4 6 times 0xFF for current). Maybe undervoltage while powered by battery.
             tone(PIN_TONE, NOTE_C7, 20);
@@ -1235,7 +1272,10 @@ int8_t store4BitDeltas(int8_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddre
             tone(PIN_TONE, NOTE_C7, 20);
         }
     }
-
+    if (!sOnlyPlotterOutput) {
+        Serial.print(F("->0x"));
+        Serial.print(tDeltaToStore, HEX);
+    }
     return aDelta;
 }
 
@@ -1276,7 +1316,7 @@ void storeBatteryValues() {
         ValuesForDeltaStorage.tempDeltaIsEmpty = true;
         ValuesForDeltaStorage.DeltaArrayIndex++;
 
-    } else if (ValuesForDeltaStorage.DeltaArrayIndex < NUMBER_OF_2_COMPRESSED_SAMPLES) {
+    } else if (ValuesForDeltaStorage.DeltaArrayIndex <= NUMBER_OF_2_COMPRESSED_SAMPLES) {
         if (!sOnlyPlotterOutput) {
             if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
                 Serial.print(F("Store values to EEPROM compress buffer"));
@@ -1288,17 +1328,17 @@ void storeBatteryValues() {
         /*
          * Append value to delta values array
          */
-        int8_t tVoltageDelta = sBatteryInfo.VoltageNoLoadMillivolt - ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt;
+        int16_t tVoltageDelta = sBatteryInfo.VoltageNoLoadMillivolt - ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt;
         tVoltageDelta = store4BitDeltas(tVoltageDelta, &ValuesForDeltaStorage.tempVoltageDelta,
                 reinterpret_cast<uint8_t*>(&sMillivoltDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
         ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt += tVoltageDelta;
 
-        int8_t tMilliampereDelta = sBatteryInfo.Milliampere - ValuesForDeltaStorage.lastStoredMilliampere;
+        int16_t tMilliampereDelta = sBatteryInfo.Milliampere - ValuesForDeltaStorage.lastStoredMilliampere;
         tMilliampereDelta = store4BitDeltas(tMilliampereDelta, &ValuesForDeltaStorage.tempMilliampereDelta,
                 reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
         ValuesForDeltaStorage.lastStoredMilliampere += tMilliampereDelta;
 
-        int8_t tMilliohmDelta = sBatteryInfo.Milliohm - ValuesForDeltaStorage.lastStoredMilliohm;
+        int16_t tMilliohmDelta = sBatteryInfo.Milliohm - ValuesForDeltaStorage.lastStoredMilliohm;
         tMilliohmDelta = store4BitDeltas(tMilliohmDelta, &ValuesForDeltaStorage.tempMilliohmDelta,
                 reinterpret_cast<uint8_t*>(&sMilliohmDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
         ValuesForDeltaStorage.lastStoredMilliohm += tMilliohmDelta;
@@ -1313,8 +1353,12 @@ void storeBatteryValues() {
             ValuesForDeltaStorage.DeltaArrayIndex++; // increase every second sample
             ValuesForDeltaStorage.tempDeltaIsEmpty = true;
         }
-    } else if (ValuesForDeltaStorage.DeltaArrayIndex == NUMBER_OF_2_COMPRESSED_SAMPLES) {
-        ValuesForDeltaStorage.DeltaArrayIndex++; // print and store only once
+    }
+
+    if (ValuesForDeltaStorage.DeltaArrayIndex == NUMBER_OF_2_COMPRESSED_SAMPLES && ValuesForDeltaStorage.tempDeltaIsEmpty) {
+        /*
+         * If buffer full, store capacity and print message
+         */
         storeCapacityToEEPROM();
         if (!sOnlyPlotterOutput) {
             Serial.println(F("EEPROM plotter values array full -> stop writing to EEPROM, but do not stop capacity measurement"));
@@ -1326,6 +1370,12 @@ void storeBatteryValues() {
 
 void storeCapacityToEEPROM() {
     eeprom_write_word(&EEPROMStartValues.CapacityMilliampereHour, sBatteryInfo.CapacityMilliampereHour); // safety net
+    if (!sOnlyPlotterOutput) {
+        // Print should be done after checkForDoublePress() in order to not disturb the double press detection
+        Serial.print(F("Capacity "));
+        Serial.print(sBatteryInfo.CapacityMilliampereHour);
+        Serial.println(F(" mAh stored"));
+    }
 }
 
 /*
