@@ -110,7 +110,8 @@ Because connecting to the Serial Plotter always resets the tester, we must be ab
 </pre>
 
 In the first row the **no load voltage** of the battery, the **30 second countdown** and the **load current** is displayed.
-In the second row the **ESR** and the **difference between the load and no load voltage**, used to compute the ESR, is dispayed.
+In the second row the **ESR** and the **difference between the load and no load voltage**, used to compute the ESR, is dispayed.<br/>
+A value of **59.999 &ohm; indicates overflow** over the maximum value of 65.535 &ohm;.
 
 ## Mode StoreToEEPROM
 - Every second, a sample is taken and displayed.
