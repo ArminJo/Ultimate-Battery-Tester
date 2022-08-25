@@ -46,6 +46,7 @@
 /*
  * Version 2.2 - 8/2022
  *    ESR > 64 bug fixed.
+ *    Display of changes on pin PIN_DISCHARGE_TO_LOW
  * Version 2.1 - 3/2022
  *    ESR is stored.
  * Version 2.0 - 3/2022
@@ -248,6 +249,7 @@ void storeBatteryValues();
 void storeCapacityToEEPROM();
 void readAndPrintEEPROMData();
 void printButtonUsageMessage();
+void printDischargeToLowState();
 
 void switchToStateDetectingBattery();
 void switchToStateInitialESRMeasurement();
@@ -321,7 +323,8 @@ unsigned long sLastMillisOfVCCCheck = VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_S
 unsigned long sFirstMillisOfESRCheck = 0;
 uint16_t sVCC;
 
-bool sOnlyPlotterOutput; // contains the value of the pin PIN_ONLY_PLOTTER_OUTPUT
+bool sOnlyPlotterOutput; // contains the (inverted) value of the pin PIN_ONLY_PLOTTER_OUTPUT
+bool sDischargeToLow; // contains the (inverted) value of the pin PIN_DISCHARGE_TO_LOW
 
 // Helper macro for getting a macro definition as string
 #define STR_HELPER(x) #x
@@ -351,9 +354,6 @@ void setup() {
         Serial.println(
                 F(
                         "Connect pin " STR(PIN_ONLY_PLOTTER_OUTPUT) " to ground, to suppress such prints not suited for Arduino plotter"));
-        if (!digitalRead(PIN_DISCHARGE_TO_LOW)) {
-            Serial.println(F("Discharge to lower voltage. e.g. 3000 mV for Li-ion"));
-        }
     }
 
     // Disable  digital input on all unused ADC channel pins to reduce power consumption
@@ -380,6 +380,12 @@ void setup() {
     myLCD.setCursor(0, 1);
     myLCD.print(F(VERSION_EXAMPLE "  " __DATE__));
     delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+
+    if (sOnlyPlotterOutput) {
+        myLCD.setCursor(0, 1);
+        myLCD.print(F("Only plotter out"));
+        delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+    }
 #endif
 
     tone(PIN_TONE, 2200, 100); // usage of tone() costs 1524 bytes code space
@@ -389,6 +395,12 @@ void setup() {
      */
     readAndPrintEEPROMData();
 
+    /*
+     * Read inverted (of inverted) value to variable in order to force printing triggered by value change :-)
+     */
+    sDischargeToLow = digitalRead(PIN_DISCHARGE_TO_LOW);
+    printDischargeToLowState();
+
     switchToStateDetectingBattery();
 }
 
@@ -396,7 +408,7 @@ void setup() {
  * The main loop with a delay of 100 ms
  */
 void loop() {
-    sOnlyPlotterOutput = digitalRead(PIN_ONLY_PLOTTER_OUTPUT);
+    sOnlyPlotterOutput = !digitalRead(PIN_ONLY_PLOTTER_OUTPUT);
 
     if (millis() - sLastMillisOfVCCCheck >= VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND) {
         sLastMillisOfVCCCheck = millis();
@@ -508,6 +520,7 @@ void loop() {
         }
     }
     delay(100);
+    printDischargeToLowState();
 }
 
 void switchToStateDetectingBattery() {
@@ -557,6 +570,33 @@ void switchToStateStopped(bool aWriteToLCD) {
             myLCD.print(F("Stopped"));
 #endif
         }
+    }
+}
+
+/*
+ * Prints state of pin if state changed or if aForcePrint is true
+ */
+void printDischargeToLowState() {
+    bool tDischargeToLow = sDischargeToLow;
+    sDischargeToLow = !digitalRead(PIN_DISCHARGE_TO_LOW);
+    if (tDischargeToLow != sDischargeToLow) {
+        if (!sOnlyPlotterOutput) {
+            if (sDischargeToLow) {
+                Serial.println(F("Discharge to lower voltage. e.g. 3000 mV for Li-ion"));
+            } else {
+                Serial.println(F("Discharge to non critical voltage. e.g. 3500 mV for Li-ion"));
+            }
+        }
+#if defined(USE_LCD)
+        myLCD.setCursor(0, 0);
+        myLCD.print(F("Cut off is "));
+        if (sDischargeToLow) {
+            myLCD.print(F("low  "));
+        } else {
+            myLCD.print(F("high "));
+        }
+        delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+#endif
     }
 }
 
@@ -699,7 +739,7 @@ void handleStartStopButtonPress(bool aButtonToggleState) {
             myLCD.print(F("Capacity stored "));
             delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #else
-            delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+                delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
             switchToStateStopped(); // no check for double press required here :-)
 
@@ -759,24 +799,24 @@ void setLoad(uint8_t aNewLoadState) {
         sBatteryInfo.LoadState = aNewLoadState;
 
 #if defined(DEBUG)
-        Serial.print(F("Set load to "));
+            Serial.print(F("Set load to "));
 #endif
 
         if (aNewLoadState == NO_LOAD) {
 #if defined(DEBUG)
-            Serial.println(F("off"));
+                Serial.println(F("off"));
 #endif
             digitalWrite(PIN_LOAD_LOW, LOW);    // disable 12 ohm load
             digitalWrite(PIN_LOAD_HIGH, LOW);    // disable 3 ohm load
         } else if (aNewLoadState == LOW_LOAD) {
 #if defined(DEBUG)
-            Serial.println(F("low"));
+                Serial.println(F("low"));
 #endif
             digitalWrite(PIN_LOAD_LOW, HIGH);    // enable 12 ohm load
             digitalWrite(PIN_LOAD_HIGH, LOW);    // disable 3 ohm load
         } else {
 #if defined(DEBUG)
-            Serial.println(F("high"));
+                Serial.println(F("high"));
 #endif
             digitalWrite(PIN_LOAD_LOW, LOW);    // disable 12 ohm load
             digitalWrite(PIN_LOAD_HIGH, HIGH);    // enable 3 ohm load
@@ -806,9 +846,9 @@ void getBatteryVoltageMillivolt() {
         pinMode(PIN_VOLTAGE_RANGE_EXTENSION, OUTPUT);
         digitalWrite(PIN_VOLTAGE_RANGE_EXTENSION, LOW);    // required???
 #if defined(DEBUG)
-        if (!sOnlyPlotterOutput) {
-            Serial.println(F("Switch to 4.4 V range"));
-        }
+            if (!sOnlyPlotterOutput) {
+                Serial.println(F("Switch to 4.4 V range"));
+            }
 #endif
         tInputVoltageRaw = readADCChannelWithReference(ADC_CHANNEL_VOLTAGE, INTERNAL);
     }
@@ -819,9 +859,9 @@ void getBatteryVoltageMillivolt() {
             pinMode(PIN_VOLTAGE_RANGE_EXTENSION, INPUT);
             digitalWrite(PIN_VOLTAGE_RANGE_EXTENSION, LOW);
 #if defined(DEBUG)
-            if (!sOnlyPlotterOutput) {
-                Serial.println(F("Switch to 2.2 V range"));
-            }
+                if (!sOnlyPlotterOutput) {
+                    Serial.println(F("Switch to 2.2 V range"));
+                }
 #endif
             tInputVoltageRaw = readADCChannelWithReference(ADC_CHANNEL_VOLTAGE, INTERNAL);
         } else if (tInputVoltageRaw >= 0x3F0) {
@@ -830,27 +870,27 @@ void getBatteryVoltageMillivolt() {
              * which leads to e.g. 0.3 ohm resolution at 9V and 60 mA
              */
 #if defined(DEBUG)
-            if (!sOnlyPlotterOutput) {
-                Serial.print(F("Switch to "));
-                Serial.print(sVCC / 1000.0, 3);
-                Serial.println(F(" V range"));
-            }
+                if (!sOnlyPlotterOutput) {
+                    Serial.print(F("Switch to "));
+                    Serial.print(sVCC / 1000.0, 3);
+                    Serial.println(F(" V range"));
+                }
 #endif
             // switch to highest voltage range by using VCC as reference
             uint16_t tReadoutFor1_1Reference = waitAndReadADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT); // 225 at 5 volt VCC
             tInputVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_VOLTAGE, DEFAULT);
 #if defined(DEBUG)
-            Serial.print(tInputVoltageRaw);
-            Serial.print(F(" / "));
-            Serial.println(tReadoutFor1_1Reference);
+                Serial.print(tInputVoltageRaw);
+                Serial.print(F(" / "));
+                Serial.println(tReadoutFor1_1Reference);
 #endif
             // Adjust tInputVoltageRaw to a range above 1023 for computation of voltage below
             tInputVoltageRaw = (tInputVoltageRaw * 1023L) / tReadoutFor1_1Reference;
         }
     }
 #if defined(DEBUG)
-    Serial.print(F("tInputVoltageRaw="));
-    Serial.print(tInputVoltageRaw);
+        Serial.print(F("tInputVoltageRaw="));
+        Serial.print(tInputVoltageRaw);
 #endif
     /*
      * Compute voltage
@@ -871,9 +911,9 @@ void getBatteryVoltageMillivolt() {
     }
 
 #if defined(DEBUG)
-    Serial.print(F(" -> "));
-    Serial.print(tCurrentBatteryVoltageMillivolt);
-    Serial.println(F(" mV"));
+        Serial.print(F(" -> "));
+        Serial.print(tCurrentBatteryVoltageMillivolt);
+        Serial.println(F(" mV"));
 #endif
 }
 
@@ -920,8 +960,8 @@ void getBatteryValues() {
             if (sESRHistory[i - 1] != 0) {
                 // shift i-1 to i and add to average
 #if defined(DEBUG)
-                Serial.print(sESRHistory[i - 1]);
-                Serial.print('+');
+                    Serial.print(sESRHistory[i - 1]);
+                    Serial.print('+');
 #endif
                 tESRAverageHistoryCounter++; // count only valid entries
                 tESRAverageAccumulator += sESRHistory[i - 1];
@@ -939,12 +979,12 @@ void getBatteryValues() {
         sBatteryInfo.Milliohm = (tESRAverageAccumulator + (tESRAverageHistoryCounter / 2)) / tESRAverageHistoryCounter;
 
 #if defined(DEBUG)
-        Serial.print(sESRHistory[0]);
-        Serial.print('/');
-        Serial.print(tESRAverageHistoryCounter);
-        Serial.print('=');
-        Serial.print(sBatteryInfo.Milliohm);
-        Serial.println();
+            Serial.print(sESRHistory[0]);
+            Serial.print('/');
+            Serial.print(tESRAverageHistoryCounter);
+            Serial.print('=');
+            Serial.print(sBatteryInfo.Milliohm);
+            Serial.println();
 #endif
 
         /*
@@ -988,10 +1028,10 @@ void playEndTone(void) {
  */
 bool checkStopCondition() {
     uint16_t tSwitchOffVoltageMillivolt;
-    if (digitalRead(PIN_DISCHARGE_TO_LOW)) {
-        tSwitchOffVoltageMillivolt = BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt;
-    } else {
+    if (sDischargeToLow) {
         tSwitchOffVoltageMillivolt = BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivoltLow;
+    } else {
+        tSwitchOffVoltageMillivolt = BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt;
     }
     if (sBatteryInfo.VoltageNoLoadMillivolt < tSwitchOffVoltageMillivolt
             && sBatteryInfo.VoltageNoLoadMillivolt > tSwitchOffVoltageMillivolt - 100) {
@@ -1630,15 +1670,6 @@ void readAndPrintEEPROMData() {
     myLCD.setCursor(0, 0);
     myLCD.print(getVCCVoltage(), 1);
     myLCD.print(F("V Stored data"));
-    delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
-
-    myLCD.setCursor(0, 0);
-    myLCD.print(F("Cut off is "));
-    if (digitalRead(PIN_DISCHARGE_TO_LOW)) {
-        myLCD.print(F("high "));
-    } else {
-        myLCD.print(F("low  "));
-    }
     delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
 }

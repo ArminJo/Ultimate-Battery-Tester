@@ -1,5 +1,5 @@
 # [Ultimate-Battery-Tester](https://github.com/ArminJo/Ultimate-Battery-Tester)
-### Version 2.1.0
+### Version 2.2.0
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Build Status](https://github.com/ArminJo/Ultimate-Battery-Tester/workflows/TestCompile/badge.svg)](https://github.com/ArminJo/Ultimate-Battery-Tester/actions)
 ![Hit Counter](https://visitor-badge.laobi.icu/badge?page_id=ArminJo_Ultimate-Battery-Tester)
@@ -51,6 +51,14 @@ After boot, the tester displays its name and version and date for 2 seconds.
 Battery Tester
 2.0 MAR 1 2022
 ```
+
+If pin `PIN_ONLY_PLOTTER_OUTPUT` (pin 10) is held low, then the message "Only plotter out" is displayed in the second row for 2 seconds.
+
+```
+Battery Tester
+Only plotter out
+```
+
 Then it prints the data read from EEPROM to serial monitor and displays ESR and capacity.
 The Arduino supply voltage (VCC) together with the message "Stored data" is displayed in the first row for 2 seconds.
 <pre>
@@ -137,6 +145,10 @@ A press of the start/stop button **switches to mode DetectingBattery**.
 
 
 # Revision History
+### Version 2.2.0
+- ESR > 64 bug fixed.
+- Display of changes on pin PIN_DISCHARGE_TO_LOW.
+
 ### Version 2.1.0
 - ESR is stored and not computed any more.
 
