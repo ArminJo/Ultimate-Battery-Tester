@@ -1033,8 +1033,7 @@ bool checkStopCondition() {
     } else {
         tSwitchOffVoltageMillivolt = BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt;
     }
-    if (sBatteryInfo.VoltageNoLoadMillivolt < tSwitchOffVoltageMillivolt
-            && sBatteryInfo.VoltageNoLoadMillivolt > tSwitchOffVoltageMillivolt - 100) {
+    if (sBatteryInfo.VoltageNoLoadMillivolt < tSwitchOffVoltageMillivolt) {
         /*
          * Switch off condition met
          */
