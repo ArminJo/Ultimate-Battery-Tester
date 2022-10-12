@@ -71,7 +71,7 @@
  * For my Nanos I measured e.g. 1060 mV and 1093 mV.
  */
 #if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT)
-#define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100L    // Value measured at the AREF pin
+#define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100L // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
 
 #define MILLIS_IN_ONE_SECOND 1000L
@@ -139,16 +139,18 @@ struct BatteryTypeInfoStruct {
     uint16_t DetectionThresholdVoltageMillivolt; // type is detected if voltage is below this threshold
     uint16_t SwitchOffVoltageMillivolt;
     uint16_t SwitchOffVoltageMillivoltLow;
-    uint8_t LoadType; // High or low
+    uint8_t LoadType; // High (3 Ohm) or low (12 Ohm)
 };
 #define NO_BATTERY_INDEX    0
 struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 0, 1000, 0, 0, NO_LOAD }, /**/
-{ "NiCd NiMH ", 1200, 1460, NIMH_CUT_OFF_VOLTAGE_MILLIVOLT, NIMH_CUT_OFF_VOLTAGE_MILLIVOLT_LOW, HIGH_LOAD }, /**/
-{ "Alkali    ", 1500, 1550, 1300, 1000, HIGH_LOAD }, /**/
-{ "NiZn batt.", 1650, 1800, 1500, 1300, HIGH_LOAD }, /**/
-{ "LiFePO4   ", 3200, 3400, 3000, 2700, LOW_LOAD }, /**/
-{ "LiIo batt.", 3700, 4300, LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT, LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW, LOW_LOAD }, /**/
-{ "9 V Block ", 9000, 9200, 7 * NIMH_CUT_OFF_VOLTAGE_MILLIVOLT, 7 * NIMH_CUT_OFF_VOLTAGE_MILLIVOLT_LOW, LOW_LOAD }, /**/
+{ "NiCd NiMH ", 1200, 1460, NIMH_CUT_OFF_VOLTAGE_MILLIVOLT, NIMH_CUT_OFF_VOLTAGE_MILLIVOLT_LOW, HIGH_LOAD }, /*400 mA*/
+{ "Alkali    ", 1500, 1550, 1300, 1000, HIGH_LOAD }, /*500 mA*/
+{ "NiZn batt.", 1650, 1800, 1500, 1300, HIGH_LOAD }, /*550 mA*/
+{ "LiFePO4   ", 3200, 3400, 3000, 2700, LOW_LOAD }, /*270 mA*/
+{ "LiIo batt.", 3700, 5000, LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT/*3.5V*/, LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LOW_LOAD }, /*300 mA*/
+{ "2 Li batt.", 7400, 8500, 2 * LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
+LOW_LOAD }, /*620 mA*/
+{ "9 V Block ", 9000, 9200, 7700, 7000, LOW_LOAD }, /*750 mA => external resistor recommended*/
 { "Voltage   ", 0, 0, 0, 0, NO_LOAD } };
 
 /*
@@ -827,7 +829,7 @@ void setLoad(uint8_t aNewLoadState) {
 
 /*
  * Sets VoltageNoLoadMillivolt or VoltageLoadMillivolt
- * Provides automatic range switch between 2.2, 4.4 and 14 (to 20) volt range
+ * Provides automatic range switch between 2.2, 4.4 and 14 (up to 20 with 5V VCC) volt range
  * The ranges are realized by a divider with 100 kOhm and 100 kOhm -> 2.2 V range and a divider with 100 kOhm and 33.333 kOhm -> 4.4 v range
  * The 14 volt range is realized by using the 4.4 volt range with VCC (of at least 3.5 volt) as reference.
  * With 5 volt VCC this range goes up to 20 volt.

@@ -1,8 +1,8 @@
 /*************************************************
  * Public Constants
  *************************************************/
-#ifndef _Pitches_h_
-#define _Pitches_h_
+#ifndef _PITCHES_H
+#define _PITCHES_H
 
 #define NOTE_P   0 // Pause
 #define NOTE_B0  31
@@ -99,4 +99,8 @@ static const int NoteC5ToC7Pentatonic[] = { NOTE_C5, NOTE_D5, NOTE_E5, NOTE_G5, 
 NOTE_A6, NOTE_C7 };
 #define ARRAY_SIZE_NOTE_C5_TO_C7_PENTATONIC (sizeof(NoteC5ToC7Pentatonic)/sizeof(const int)) // 11
 
-#endif // _Pitches_h_
+static const int NoteC4ToC8Pentatonic[] = { NOTE_C4, NOTE_D4, NOTE_E4, NOTE_G4, NOTE_A4, NOTE_C5, NOTE_D5, NOTE_E5, NOTE_G5,
+NOTE_A5, NOTE_C6, NOTE_D6, NOTE_E6, NOTE_G6, NOTE_A6, NOTE_C7, NOTE_D7, NOTE_E7, NOTE_G7, NOTE_A7, NOTE_C8 };
+#define ARRAY_SIZE_NOTE_C4_TO_C8_PENTATONIC (sizeof(NoteC4ToC8Pentatonic)/sizeof(const int)) // 21
+
+#endif // _PITCHES_H

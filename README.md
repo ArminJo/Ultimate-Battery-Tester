@@ -12,6 +12,8 @@
 - Display of no load voltage for independence of load (resistor).
 - Easy continuing of interrupted dicharge measurements.
 - Display of ESR, voltage, current and capacity on a 1602 LCD.
+- Supports **2 load resistors** for different battery voltages to keep current below 600 mA.
+- Supports battery voltages up to 20 volt (@5V Arduino VCC) and external load resistor e.g. for measuring of battery packs.
 
 # Li-Ion battery capacity
 For Li-Ion the capacity is specified for discharge from **4.2 V to 3.0 V** as in [CGR18650CG Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/CGR18650CG-Panasonic.pdf)
@@ -31,9 +33,25 @@ Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is
 Arduino plot for a **NiMH cell** with 55 m&ohm; ESR.
 ![870mAh_120mOhm](pictures/1275mAh_55mOhm.png)
 
+# Principle of operation
+While the Mosfet is switched on, the voltage at the 2 ohm shunt resistor is measured to get the current. The voltage at the battery terminal is measured to get the voltage under load.<br/>
+Every second, the Mosfet is deactivated for 5 ms, the "no load" voltage at the battery terminal is measured and the Mosfet is switched on again.<br/>
+The internal resistance can now be computed from the difference of the load and the no load voltage and the difference of the currents (measured mA and 0 mA).
+
 # Compile with the Arduino IDE
 Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the UltimateBatteryTester folder. 
 
+# Pictures
+
+| Overview | Top View |
+|-|-|
+| ![Overview](pictures/Overview.jpg) | ![Top View](pictures/TopView.jpg) |
+| MosFets | Reset and application sensor button |
+| ![MosFets](pictures/MosFets.jpg) | ![Reset and application sensor button](pictures/Buttons.jpg) |
+| Battery holder top view | Battery holder bottom view |
+| ![LCD Battery holder top view](pictures/BatteryHolderTop.jpg) | ![Battery holder bottom view](pictures/BatteryHolderBottom.jpg) |
+
+# Schematics
 ![Fritzing board](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/extras/UltimateBatteryTester_Steckplatine.png)
 ![Fritzing schematics](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/extras/UltimateBatteryTester_Schaltplan.png)
 
