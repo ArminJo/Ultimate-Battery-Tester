@@ -44,6 +44,8 @@
 #include "pitches.h"
 
 /*
+ * Version 2.2 - 10/2022
+ *    Increase no load settle time especially for NiMh batteries
  * Version 2.2 - 8/2022
  *    ESR > 64 bug fixed.
  *    Display of changes on pin PIN_DISCHARGE_TO_LOW
@@ -57,14 +59,14 @@
  *    Initial version.
  */
 
-#define VERSION_EXAMPLE "2.2"
+#define VERSION_EXAMPLE "2.3"
 //#define DEBUG
 
-#define LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT        3500 // Switch off voltage for Li-ion capacity measurement
-#define LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for Li-ion capacity measurement
+#define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT        3500 // Switch off voltage for Li-ion capacity measurement
+#define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for Li-ion capacity measurement
 
-#define NIMH_CUT_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
-#define NIMH_CUT_OFF_VOLTAGE_MILLIVOLT_LOW      1000 // Switch off voltage for NI-MH capacity measurement
+#define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
+#define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW      1000 // Switch off voltage for NI-MH capacity measurement
 
 /*
  * You should calibrate your ADC readout by replacing this value with the voltage you measured a the AREF pin after the program started.
@@ -89,10 +91,12 @@
 
 #define STATE_INITIAL_ESR_DURATION_SECONDS  32  // 32 seconds (-2 for initial display of append message) before starting discharge and storing, to have time to just test for ESR of battery.
 
+#define LOAD_SWITCH_SETTLE_TIME_MILLIS      100  // Time for voltage to settle after load switch was disabled
+
 #define MAX_VALUES_DISPLAYED_IN_PLOTTER     500 // The Arduino Plotter displays 500 values on before scrolling
-#define NUMBER_OF_2_COMPRESSED_SAMPLES      329  // -1 since we always have the initial value. 11 h for 1 minute sample rate
-#define STORAGE_PERIOD_SECONDS              SECONDS_IN_ONE_MINUTE // 1 minute
-#define SAMPLE_PERIOD_MILLIS                MILLIS_IN_ONE_SECOND
+#define NUMBER_OF_2_COMPRESSED_SAMPLES      329 // -1 since we always have the initial value. 11 h for 1 minute sample rate
+#define NUMBER_OF_SAMPLES_PER_STORAGE        60 // 1 minute, if we have 1 sample per second
+#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS MILLIS_IN_ONE_SECOND  // The time of the activated load for one sample.
 #define BATTERY_DETECTION_PERIOD_MILLIS     (MILLIS_IN_ONE_SECOND / 2) // 500 ms
 #define BATTERY_DETECTION_MINIMAL_MILLIVOLT 100
 /*
@@ -143,12 +147,12 @@ struct BatteryTypeInfoStruct {
 };
 #define NO_BATTERY_INDEX    0
 struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 0, 1000, 0, 0, NO_LOAD }, /**/
-{ "NiCd NiMH ", 1200, 1460, NIMH_CUT_OFF_VOLTAGE_MILLIVOLT, NIMH_CUT_OFF_VOLTAGE_MILLIVOLT_LOW, HIGH_LOAD }, /*400 mA*/
+{ "NiCd NiMH ", 1200, 1460, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, HIGH_LOAD }, /*400 mA*/
 { "Alkali    ", 1500, 1550, 1300, 1000, HIGH_LOAD }, /*500 mA*/
 { "NiZn batt.", 1650, 1800, 1500, 1300, HIGH_LOAD }, /*550 mA*/
 { "LiFePO4   ", 3200, 3400, 3000, 2700, LOW_LOAD }, /*270 mA*/
-{ "LiIo batt.", 3700, 5000, LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT/*3.5V*/, LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LOW_LOAD }, /*300 mA*/
-{ "2 Li batt.", 7400, 8500, 2 * LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_CUT_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
+{ "LiIo batt.", 3700, 5000, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3.5V*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LOW_LOAD }, /*300 mA*/
+{ "2 Li batt.", 7400, 8500, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
 LOW_LOAD }, /*620 mA*/
 { "9 V Block ", 9000, 9200, 7700, 7000, LOW_LOAD }, /*750 mA => external resistor recommended*/
 { "Voltage   ", 0, 0, 0, 0, NO_LOAD } };
@@ -194,7 +198,7 @@ uint16_t sCurrentLoadResistorAverage;
  * Current value is in sESRHistory[0]. The average is stored in sBatteryInfo.Milliohm.
  * For 9V and 60 mA we have a resolution of 0.3 ohm so we need an average.
  */
-#define HISTORY_SIZE_FOR_ESR_AVERAGE ((STORAGE_PERIOD_SECONDS * SAMPLE_PERIOD_MILLIS) / MILLIS_IN_ONE_SECOND) // 60
+#define HISTORY_SIZE_FOR_ESR_AVERAGE ((NUMBER_OF_SAMPLES_PER_STORAGE * SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS) / MILLIS_IN_ONE_SECOND) // 60
 uint16_t sESRHistory[HISTORY_SIZE_FOR_ESR_AVERAGE];
 
 /*
@@ -302,23 +306,21 @@ LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
 /*
  * Loop timing
  */
-#define LOAD_SWITCH_SETTLE_TIME_MILLIS  5   // Time for voltage to settle after load switch
-
 //#define TEST
 #if defined(TEST)
 // to speed up testing the code
 #undef STATE_INITIAL_ESR_DURATION_SECONDS
-#undef STORAGE_PERIOD_SECONDS
-#undef SAMPLE_PERIOD_MILLIS
+#undef NUMBER_OF_SAMPLES_PER_STORAGE
+#undef SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS
 #define STATE_INITIAL_ESR_DURATION_SECONDS   4
-#define STORAGE_PERIOD_SECONDS               5
-#define SAMPLE_PERIOD_MILLIS               500
+#define NUMBER_OF_SAMPLES_PER_STORAGE               5
+#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS               500
 #endif
 
 #define VCC_CHECK_THRESHOLD_MILLIVOLT     3500 // 3.5 volt
 #define VCC_CHECK_PERIOD_SECONDS            (60 * 5L) // check every 5 minutes if VCC is below VCC_CHECK_THRESHOLD_MILLIVOLT
 
-unsigned long sLastMillisOfStorage;
+unsigned long sSampleCountForStoring;
 unsigned long sLastMillisOfSample = 0;
 unsigned long sLastMillisOfBatteryDetection = 0;
 unsigned long sLastMillisOfVCCCheck = VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND; // to force first check at startup
@@ -453,12 +455,12 @@ void loop() {
             }
         }
 
-    } else if (millis() - sLastMillisOfSample >= SAMPLE_PERIOD_MILLIS) {
+    } else if (millis() - sLastMillisOfSample >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + LOAD_SWITCH_SETTLE_TIME_MILLIS)) {
         sLastMillisOfSample = millis();
+
         /*
          * Do all this every second
          */
-
         if (sMeasurementState == STATE_STOPPED) {
             getBatteryVoltageMillivolt(); // get battery no load voltage
         } else {
@@ -498,12 +500,12 @@ void loop() {
             // end of state STATE_INITIAL_ESR_MEASUREMENT
 
         } else if (sMeasurementState == STATE_STORE_TO_EEPROM) {
-
+            sSampleCountForStoring++;
             /*
              * Check for periodic storage to EEPROM
              */
-            if (millis() - sLastMillisOfStorage >= STORAGE_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND) {
-                sLastMillisOfStorage = millis();
+            if (sSampleCountForStoring >= NUMBER_OF_SAMPLES_PER_STORAGE) {
+                sSampleCountForStoring = 0;
                 storeBatteryValues();
                 /*
                  * Check for switch off voltage reached, if stored to EEPROM
@@ -547,7 +549,7 @@ void switchToStateStoreToEEPROM() {
     if (!sOnlyPlotterOutput) {
         Serial.println(F("Switch to state STORE TO EEPROM"));
     }
-    sLastMillisOfStorage = -(STORAGE_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND); // store first value immediately
+    sSampleCountForStoring = NUMBER_OF_SAMPLES_PER_STORAGE; // store first value immediately
 }
 
 /*
@@ -939,18 +941,17 @@ void getBatteryValues() {
     //Deactivate load and wait for voltage to settle
     setLoad(NO_LOAD);
     delay(LOAD_SWITCH_SETTLE_TIME_MILLIS);
-
     getBatteryVoltageMillivolt();    // get current battery no load voltage
-    sBatteryInfo.sESRDeltaMillivolt = sBatteryInfo.VoltageNoLoadMillivolt - sBatteryInfo.VoltageLoadMillivolt;
-
     // restore original load state
     setLoad(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].LoadType);
+
+    sBatteryInfo.sESRDeltaMillivolt = sBatteryInfo.VoltageNoLoadMillivolt - sBatteryInfo.VoltageLoadMillivolt;
 
     if (sBatteryInfo.Milliampere > 1) {
         // New capacity computation
         sBatteryInfo.CapacityAccumulator += sBatteryInfo.Milliampere;
         sBatteryInfo.CapacityMilliampereHour = sBatteryInfo.CapacityAccumulator
-                / ((3600L * MILLIS_IN_ONE_SECOND) / SAMPLE_PERIOD_MILLIS);    // = / 3600 for 1 s sample period
+                / ((3600L * MILLIS_IN_ONE_SECOND) / SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS);    // = / 3600 for 1 s sample period
 
         /*
          * Compute sESRAverage
@@ -1493,7 +1494,8 @@ void printValuesForPlotter(uint16_t aVoltageToPrint, uint16_t aMilliampereToPrin
         Serial.print(StartValues.CapacityMilliampereHour);
         Serial.print(F("mAh Duration="));
         // We have 2 4bit values per storage byte
-        uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex) * (2 * STORAGE_PERIOD_SECONDS) / SECONDS_IN_ONE_MINUTE;
+        uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex)
+                * (2 * NUMBER_OF_SAMPLES_PER_STORAGE)/ SECONDS_IN_ONE_MINUTE;
         Serial.print(tDurationMinutes / 60);
         Serial.print(F("h_"));
         Serial.print(tDurationMinutes % 60);
@@ -1626,7 +1628,7 @@ void readAndPrintEEPROMData() {
         printValuesForPlotter(tVoltage, tMilliampere, tMilliohm, (i == ValuesForDeltaStorage.DeltaArrayIndex - 1));
     }
 
-    uint16_t tCurrentCapacityMilliampereHourComputed = tCapacityAccumulator / (3600L / STORAGE_PERIOD_SECONDS);
+    uint16_t tCurrentCapacityMilliampereHourComputed = tCapacityAccumulator / (3600L / NUMBER_OF_SAMPLES_PER_STORAGE);
     if (sBatteryInfo.CapacityMilliampereHour == 0) {
         if (!sOnlyPlotterOutput) {
             Serial.print(F("No Capacity stored, so use computed capacity of "));
@@ -1649,7 +1651,7 @@ void readAndPrintEEPROMData() {
 
     // restore capacity accumulator
     sBatteryInfo.CapacityAccumulator = sBatteryInfo.CapacityMilliampereHour
-            * ((3600L * MILLIS_IN_ONE_SECOND) / SAMPLE_PERIOD_MILLIS);
+            * ((3600L * MILLIS_IN_ONE_SECOND) / SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS);
 
     if (!sOnlyPlotterOutput) {
         Serial.print(F("EEPROM values: "));

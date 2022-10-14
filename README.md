@@ -95,7 +95,7 @@ A double press during 2 seconds always displays `Stop measurement` for 2 seconds
 
 
 ## Mode DetectingBattery
-If no battery is inserted, the Arduino supply voltage (VCC) together with the message "No batt. is displayed in the first row until a battery is inserted.
+If no battery is inserted, the Arduino supply voltage (VCC) together with the message "No batt." is displayed in the first row until a battery is inserted.
 
 <pre>
 4.8V    No batt.
@@ -110,7 +110,7 @@ NiCd NiMH found
 ```
 for 2 seconds.
 **From now on, the start/stop button is enabled.**<br/>
-Then the messages "dbl press = stop",  and "Press button to append to EEPROM" are displayed for each 2 seconds.
+Then the messages "dbl press = stop",  and "Press button to append to EEPROM" are displayed for 2 seconds each.
 
 <pre>
 dbl press = stop
@@ -126,8 +126,8 @@ After this, the mode is **switched to InitialESRMeasurement**.
 ## Mode InitialESRMeasurement
 This mode lasts for 30 seconds before a new measurement is initiated and **mode is switched StoreToEEPROM**.<br/>
 This 30 seconds can be used to quick check a battery, without overwriting the already stores values.<br/>
-A button press during the 30 seconds **switches directly to mode StoreToEEPROM** but appends to already stored EEPROM data instead of initiating a new measurement.
-This enables to connect the tester to the Arduino Serial Plotter at any time in the measurement without loosing data already acquired.
+A button press during the 30 seconds **switches directly to mode StoreToEEPROM and appends to already stored EEPROM data**, instead of starting a new measurement.
+This enables it to connect the tester to the Arduino Serial Plotter at any time in the measurement without loosing data already acquired.
 Because connecting to the Serial Plotter always resets the tester, we must be able to avoid to start a fresh measurement after reset.
 
 <pre>
