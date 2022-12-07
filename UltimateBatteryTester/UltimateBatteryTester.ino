@@ -44,8 +44,9 @@
 #include "pitches.h"
 
 /*
- * Version 2.2 - 10/2022
+ * Version 2.3 - 10/2022
  *    Increase no load settle time especially for NiMh batteries
+ *    Attention tones
  * Version 2.2 - 8/2022
  *    ESR > 64 bug fixed.
  *    Display of changes on pin PIN_DISCHARGE_TO_LOW
@@ -62,9 +63,11 @@
 #define VERSION_EXAMPLE "2.3"
 //#define DEBUG
 
+#define LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT          4300 // Voltage if fully loaded
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT        3500 // Switch off voltage for Li-ion capacity measurement
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for Li-ion capacity measurement
 
+#define NIMH_MAX_FULL_VOLTAGE_MILLIVOLT            1460 // Voltage if fully loaded
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW      1000 // Switch off voltage for NI-MH capacity measurement
 
@@ -90,8 +93,6 @@
 //#define USE_SERIAL_LCD
 
 #define STATE_INITIAL_ESR_DURATION_SECONDS  32  // 32 seconds (-2 for initial display of append message) before starting discharge and storing, to have time to just test for ESR of battery.
-
-#define LOAD_SWITCH_SETTLE_TIME_MILLIS      100  // Time for voltage to settle after load switch was disabled
 
 #define MAX_VALUES_DISPLAYED_IN_PLOTTER     500 // The Arduino Plotter displays 500 values on before scrolling
 #define NUMBER_OF_2_COMPRESSED_SAMPLES      329 // -1 since we always have the initial value. 11 h for 1 minute sample rate
@@ -144,18 +145,26 @@ struct BatteryTypeInfoStruct {
     uint16_t SwitchOffVoltageMillivolt;
     uint16_t SwitchOffVoltageMillivoltLow;
     uint8_t LoadType; // High (3 Ohm) or low (12 Ohm)
+    uint16_t LoadSwitchSettleTimeMillis; // Time for voltage to settle after load switch was disabled
 };
 #define NO_BATTERY_INDEX    0
-struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 0, 1000, 0, 0, NO_LOAD }, /**/
-{ "NiCd NiMH ", 1200, 1460, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, HIGH_LOAD }, /*400 mA*/
-{ "Alkali    ", 1500, 1550, 1300, 1000, HIGH_LOAD }, /*500 mA*/
-{ "NiZn batt.", 1650, 1800, 1500, 1300, HIGH_LOAD }, /*550 mA*/
-{ "LiFePO4   ", 3200, 3400, 3000, 2700, LOW_LOAD }, /*270 mA*/
-{ "LiIo batt.", 3700, 5000, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3.5V*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LOW_LOAD }, /*300 mA*/
-{ "2 Li batt.", 7400, 8500, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
-LOW_LOAD }, /*620 mA*/
-{ "9 V Block ", 9000, 9200, 7700, 7000, LOW_LOAD }, /*750 mA => external resistor recommended*/
-{ "Voltage   ", 0, 0, 0, 0, NO_LOAD } };
+struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 0, 1000, 0, 0, NO_LOAD, 0 }, /**/
+{ "NiCd NiMH ", 1200, NIMH_MAX_FULL_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
+HIGH_LOAD, 100 }, /*400 mA*/
+{ "Alkali    ", 1500, 1550, 1300, 1000, HIGH_LOAD, 100 }, /*500 mA*/
+{ "NiZn batt.", 1650, 1800, 1500, 1300, HIGH_LOAD, 100 }, /*550 mA*/
+{ "LiFePO4   ", 3200, 3400, 3000, 2700, LOW_LOAD, 10 }, /*270 mA*/
+{ "LiIo batt.", 3700, 5000, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3.5V*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/,
+LOW_LOAD, 10 }, /*300 mA*/
+{ "LiIo 2pack", 7400, 2 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2
+        * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
+LOW_LOAD, 10 }, /*620 mA*/
+{ "9 V Block ", 9000, 9200, 7700, 7000, LOW_LOAD, 10 }, /*750 mA => external resistor recommended*/
+{ "LiIo 3pack", 11100, 3 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 3
+        * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, LOW_LOAD, 10 }, /*925 mA*/
+{ "LiIo 4pack", 14800, 4 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 4
+        * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, LOW_LOAD, 10 }, /*1233 mA*/
+{ "Voltage   ", 0, 0, 0, 0, NO_LOAD, 0 } };
 
 /*
  * Current battery values set by getBatteryValues()
@@ -172,6 +181,7 @@ struct BatteryInfoStruct {
     uint8_t LoadState; // NO_LOAD | LOW_LOAD 12 ohm | HIGH_LOAD 3 ohm
     uint8_t TypeIndex;
 } sBatteryInfo;
+
 uint16_t sLastVoltageNoLoadMillivoltForBatteryCheck;
 uint16_t sLastVoltageNoLoadMillivoltForPrint;
 bool sBatteryWasInserted = false;
@@ -181,12 +191,19 @@ bool sBatteryWasDetectedAtLeastOnce = false;
  * Tester state machine
  */
 #define STATE_SETUP_AND_READ_EEPROM         0
-#define STATE_DETECTING_BATTERY             1
-#define STATE_INITIAL_ESR_MEASUREMENT       2 // only voltage and ESR measurement every n seconds for STATE_INITIAL_ESR_DURATION_SECONDS seconds
-#define STATE_STORE_TO_EEPROM               3
+#define STATE_DETECTING_BATTERY             1 // Check if battery is inserted and determine type
+#define STATE_INITIAL_ESR_MEASUREMENT       2 // Only voltage and ESR measurement every n seconds for STATE_INITIAL_ESR_DURATION_SECONDS seconds
+#define STATE_STORE_TO_EEPROM               3 // Main measurement state, get values and store to EEPROM
 #define STATE_STOPPED                       4 // Switch off voltage reached, until removal of battery
 volatile uint8_t sMeasurementState = STATE_SETUP_AND_READ_EEPROM;
 
+/*
+ * Attention timing
+ */
+#define STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS     (MILLIS_IN_ONE_SECOND * 60)
+#define STATE_STOP_ATTENTION_PERIOD_MILLIS                  (MILLIS_IN_ONE_SECOND * 600)
+unsigned long sLastStateDetectingBatteryBeepMillis;
+unsigned long sLastStateStoppedBeepMillis;
 /*
  * Current value is in sCurrentLoadResistorHistory[0]. Used for computing and storing the average.
  */
@@ -325,7 +342,7 @@ unsigned long sLastMillisOfSample = 0;
 unsigned long sLastMillisOfBatteryDetection = 0;
 unsigned long sLastMillisOfVCCCheck = VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND; // to force first check at startup
 unsigned long sFirstMillisOfESRCheck = 0;
-uint16_t sVCC;
+uint16_t sVCCMillivolt;
 
 bool sOnlyPlotterOutput; // contains the (inverted) value of the pin PIN_ONLY_PLOTTER_OUTPUT
 bool sDischargeToLow; // contains the (inverted) value of the pin PIN_DISCHARGE_TO_LOW
@@ -426,6 +443,7 @@ void loop() {
 
     if (sMeasurementState == STATE_DETECTING_BATTERY) {
         if (millis() - sLastMillisOfBatteryDetection >= BATTERY_DETECTION_PERIOD_MILLIS) {
+
             sLastMillisOfBatteryDetection = millis();
             /*
              * Check if battery was inserted
@@ -447,19 +465,28 @@ void loop() {
 #if defined(USE_LCD)
                 if (sMeasurementState == STATE_DETECTING_BATTERY) {
                     myLCD.setCursor(0, 0);
-                    sVCC = getVCCVoltageMillivolt();
-                    myLCD.print(sVCC / 1000.0, 2);
+                    sVCCMillivolt = getVCCVoltageMillivolt();
+                    myLCD.print(sVCCMillivolt / 1000.0, 2);
                     myLCD.print(F("V"));
                 }
 #endif
+                /*
+                 * if not connected to USB, check for attention every minute
+                 */
+                if (sVCCMillivolt
+                        < 4300&& millis() - sLastStateDetectingBatteryBeepMillis >= STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS) {
+                    sLastStateDetectingBatteryBeepMillis = millis();
+                    tone(PIN_TONE, 2200, 40);
+                }
             }
         }
 
-    } else if (millis() - sLastMillisOfSample >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + LOAD_SWITCH_SETTLE_TIME_MILLIS)) {
+    } else if ((unsigned) (millis() - sLastMillisOfSample)
+            >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + BatteryTypeInfoArray[sBatteryInfo.TypeIndex].LoadSwitchSettleTimeMillis)) {
         sLastMillisOfSample = millis();
 
         /*
-         * Do all this every second
+         * Do all this every second (of battery load)
          */
         if (sMeasurementState == STATE_STOPPED) {
             getBatteryVoltageMillivolt(); // get battery no load voltage
@@ -519,8 +546,14 @@ void loop() {
         /*
          * Blink feedback if measurement is running
          */
-        if (sMeasurementState != STATE_STOPPED) {
-            TogglePin(LED_BUILTIN);
+        if (sMeasurementState == STATE_STOPPED) {
+            /*
+             * Check for attention every 10 minute
+             */
+            if (millis() - sLastStateStoppedBeepMillis >= STATE_STOP_ATTENTION_PERIOD_MILLIS) {
+                sLastStateStoppedBeepMillis = millis();
+                tone(PIN_TONE, 2200, 20);
+            }
         }
     }
     delay(100);
@@ -532,6 +565,7 @@ void switchToStateDetectingBattery() {
     if (!sOnlyPlotterOutput) {
         Serial.println(F("Switch to state DETECTING BATTERY"));
     }
+    sLastStateDetectingBatteryBeepMillis = millis();
     sLastVoltageNoLoadMillivoltForBatteryCheck = 0XFFFF; // to force first check if voltage is 0
 }
 
@@ -559,7 +593,6 @@ void switchToStateStopped(bool aWriteToLCD) {
     if (sMeasurementState != STATE_STOPPED) {
         sMeasurementState = STATE_STOPPED;
         setLoad(NO_LOAD);
-        digitalWrite(LED_BUILTIN, LOW);
 
         if (!sOnlyPlotterOutput) {
             Serial.println(F("Switch to state STOPPED"));
@@ -658,8 +691,8 @@ void printButtonUsageMessage() {
  * Makes only sense for battery operated mode which in turn requires a LCD.
  */
 bool checkForVCCUndervoltage() {
-    sVCC = getVCCVoltageMillivolt();
-    if (sVCC < VCC_CHECK_THRESHOLD_MILLIVOLT) {
+    sVCCMillivolt = getVCCVoltageMillivolt();
+    if (sVCCMillivolt < VCC_CHECK_THRESHOLD_MILLIVOLT) {
 #if defined(USE_LCD)
         myLCD.setCursor(0, 1);
         myLCD.print(F("VCC undervoltage"));
@@ -876,7 +909,7 @@ void getBatteryVoltageMillivolt() {
 #if defined(DEBUG)
                 if (!sOnlyPlotterOutput) {
                     Serial.print(F("Switch to "));
-                    Serial.print(sVCC / 1000.0, 3);
+                    Serial.print(sVCCMillivolt / 1000.0, 3);
                     Serial.println(F(" V range"));
                 }
 #endif
@@ -938,12 +971,15 @@ void getBatteryValues() {
     getBatteryCurrent();
     getBatteryVoltageMillivolt();    // get current battery load voltage
 
-    //Deactivate load and wait for voltage to settle
+    // Deactivate load and wait for voltage to settle
+    // During the no load period switch on the LED
     setLoad(NO_LOAD);
-    delay(LOAD_SWITCH_SETTLE_TIME_MILLIS);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].LoadSwitchSettleTimeMillis);
     getBatteryVoltageMillivolt();    // get current battery no load voltage
     // restore original load state
     setLoad(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].LoadType);
+    digitalWrite(LED_BUILTIN, LOW);
 
     sBatteryInfo.sESRDeltaMillivolt = sBatteryInfo.VoltageNoLoadMillivolt - sBatteryInfo.VoltageLoadMillivolt;
 
@@ -1023,6 +1059,7 @@ void playEndTone(void) {
     tone(PIN_TONE, NOTE_E5);
     delay(1000);
     tone(PIN_TONE, NOTE_A4, 1000);
+    delay(1000);
 }
 
 /*
@@ -1468,6 +1505,42 @@ void storeCapacityToEEPROM() {
  */
 void printValuesForPlotter(uint16_t aVoltageToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
         bool aDoPrintCaption) {
+#if defined(ARDUINO_2_0_PLOTTER_FORMAT)
+    Serial.print(F("Voltage:"));
+    Serial.print(aVoltageToPrint);
+    Serial.print(F(" Current:"));
+    Serial.print(aMilliampereToPrint);
+    Serial.print(F(" ESR:"));
+    Serial.print(aMilliohmToPrint);
+    if (aDoPrintSummary) {
+        // Print updated plotter caption
+        Serial.print(F(" Voltage="));
+        printAsFloat(StartValues.initialDischargingMillivolt);
+        Serial.print(F("V->"));
+        printAsFloat(aVoltageToPrint);
+        Serial.print(F("V__Current="));
+        Serial.print(StartValues.initialDischargingMilliampere);
+        Serial.print(F("mA->"));
+        Serial.print(aMilliampereToPrint);
+        Serial.print(F("mA__ESR="));
+        printAsFloat(StartValues.initialDischargingMilliohm);
+        Serial.print(F("ohm->"));
+        printAsFloat(aMilliohmToPrint);
+        Serial.print(F("ohm___LoadResistor="));
+        printAsFloat(StartValues.LoadResistorMilliohm);
+        Serial.print(F("ohm__Capacity="));
+        Serial.print(StartValues.CapacityMilliampereHour);
+        Serial.print(F("mAh__Duration="));
+        // We have 2 4bit values per storage byte
+        uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex)
+                * (2 * NUMBER_OF_SAMPLES_PER_STORAGE)/ SECONDS_IN_ONE_MINUTE;
+        Serial.print(tDurationMinutes / 60);
+        Serial.print(F("h_"));
+        Serial.print(tDurationMinutes % 60);
+        Serial.print(F("min:aVoltageToPrint"));
+    }
+    Serial.println();
+#else
     if (aDoPrintCaption) {
         // Print updated plotter caption
         Serial.print(F("Voltage="));
@@ -1507,6 +1580,7 @@ void printValuesForPlotter(uint16_t aVoltageToPrint, uint16_t aMilliampereToPrin
         Serial.print(' ');
         Serial.println(aMilliohmToPrint);
     }
+#endif
 }
 
 /*

@@ -1,9 +1,24 @@
-# [Ultimate-Battery-Tester](https://github.com/ArminJo/Ultimate-Battery-Tester)
-### Version 2.2.0
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Build Status](https://github.com/ArminJo/Ultimate-Battery-Tester/workflows/TestCompile/badge.svg)](https://github.com/ArminJo/Ultimate-Battery-Tester/actions)
-![Hit Counter](https://visitor-badge.laobi.icu/badge?page_id=ArminJo_Ultimate-Battery-Tester)
+<div align = center>
 
+# Ultimate-Battery-Tester
+Program for measuring the ESR (equivalent series resistance) of a battery and printing a graph of the values at discharge.
+
+[![Badge License: GPLv3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](https://www.gnu.org/licenses/gpl-3.0)
+ &nbsp; &nbsp; 
+[![Badge Version](https://img.shields.io/github/v/release/ArminJo/Ultimate-Battery-Tester?include_prereleases&color=yellow&logo=DocuSign&logoColor=white)](https://github.com/ArminJo/Ultimate-Battery-Tester/releases/latest)
+ &nbsp; &nbsp; 
+[![Badge Commits since latest](https://img.shields.io/github/commits-since/ArminJo/Ultimate-Battery-Tester/latest?color=yellow)](https://github.com/ArminJo/Ultimate-Battery-Tester/commits/master)
+ &nbsp; &nbsp; 
+[![Badge Build Status](https://github.com/ArminJo/Ultimate-Battery-Tester/workflows/TestCompile/badge.svg)](https://github.com/ArminJo/Ultimate-Battery-Tester/actions)
+ &nbsp; &nbsp; 
+![Badge Hit Counter](https://visitor-badge.laobi.icu/badge?page_id=ArminJo_Ultimate-Battery-Tester)
+<br/>
+<br/>
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
+
+</div>
+
+<br/>
 
 # Features
 - **Measures the ESR (equivalent series resistance) of the battery.** This is an idicator of the health of the battery.
@@ -15,6 +30,8 @@
 - Supports **2 load resistors** for different battery voltages to keep current below 600 mA.
 - Supports battery voltages up to 20 volt (@5V Arduino VCC) and external load resistor e.g. for measuring of battery packs.
 
+<br/>
+
 # Li-Ion battery capacity
 For Li-Ion the capacity is specified for discharge from **4.2 V to 3.0 V** as in [CGR18650CG Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/CGR18650CG-Panasonic.pdf)
 or to **2.75 V** as in [ICR18650-26A Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/ICR18650-26A_Samsung.pdf).
@@ -22,21 +39,44 @@ The UltimateBatteryTester has a **cut-off voltage of 3.5 V** for Li-Ion to treat
 This results in a reduced capacity displayed by approximately the factor 0.85 (1.18), e.g. a Li-Ion cell with nominal capacity of 2150 mAh at 3 V EOD (End Of Discharge) is measured as 1830 mAh at 3.5 V EOD.<br/>
 The cut off voltage can be changed to lower values by connecting pin 11 to ground. See [here](#special-pin-usage).
 
+<br/>
+
 # Battery ESR
 The internal resistance is an indicator of the health of the cell. E.g. if a NiMH cell has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA**, which may be to low for the circuit to work properly.
 ESR values for NiMH can go down to excellent 0.05 &ohm;.<br/>
 Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;.
 
-Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement. The displayed voltage is the "no load" voltage, to be independent of the current load resistor.
+Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement. **The displayed voltage is the "no load" voltage**, to be independent of the current load resistor.
 ![2155mAh_53mOhm](pictures/2155mAh_53mOhm.png)
 
 Arduino plot for a **NiMH cell** with 55 m&ohm; ESR.
 ![870mAh_120mOhm](pictures/1275mAh_55mOhm.png)
 
+| Graph of a NiMh battery sold as 4/5AA 1800mAh Ni-Mh proving only 960 mAh |  |
+|-|-|
+| ![1800mAh](pictures/1800NiMhBattery.png) |  |
+<br/>
+
 # Principle of operation
+The battery type is detected by a fixed mapping of voltage to type in `BatteryTypeInfoArray[]`.
 While the Mosfet is switched on, the voltage at the 2 ohm shunt resistor is measured to get the current. The voltage at the battery terminal is measured to get the voltage under load.<br/>
-Every second, the Mosfet is deactivated for 5 ms, the "no load" voltage at the battery terminal is measured and the Mosfet is switched on again.<br/>
+Every second, the Mosfet is deactivated for 10 ms or 100 ms (depending of battery type), the "no load" voltage at the battery terminal is measured and the Mosfet is switched on again.<br/>
 The internal resistance can now be computed from the difference of the load and the no load voltage and the difference of the currents (measured mA and 0 mA).
+
+Every minute, current data is stored/appended to EEPROM. **The complete data is printed in Arduino Plotter format at each reboot**.
+So it is possible to interrupt the measurement or switch it off after the measurement is finished, without loosing data.
+More details can be found [below](#modes-of-measurement).
+
+<br/>
+
+# Measurement of battery packs with external load resistor
+Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14 volt require a 5 volt supply of the arduino.<br/>
+Since the build in load resistor is 12 ohm, **the current can go up to 1.4 ampere and the power to 24 watt** and leaving 2.8 watt at the 2 ohm shunt resistors.<br/>
+This is too much for the resistors I used for shunt! A solution is to **add an additional resistor of around 20 ohm in series to the 10 ohm aready built in 10 ohm one**.
+This reduces the current to around 500 mA and power to 9 watt leaving 1 watt at the 2 ohm shunt resistors.<br/>
+No other adaptions has to be made.
+
+<br/>
 
 # Compile with the Arduino IDE
 Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the UltimateBatteryTester folder. 
@@ -163,6 +203,9 @@ A press of the start/stop button **switches to mode DetectingBattery**.
 
 
 # Revision History
+### Version 2.3.0
+- Attention each minute in STATE_DETECTING_BATTERY.
+
 ### Version 2.2.0
 - ESR > 64 bug fixed.
 - Display of changes on pin PIN_DISCHARGE_TO_LOW.
@@ -176,4 +219,4 @@ A press of the start/stop button **switches to mode DetectingBattery**.
 ### Version 1.0.0
 - Initial version with EEPROM storage.
 
-#### If you find this library useful, please give it a star.
+#### If you find this program useful, please give it a star.
