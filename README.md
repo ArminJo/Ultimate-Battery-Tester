@@ -59,7 +59,7 @@ Arduino plot for a **NiMH cell** with 55 m&ohm; ESR.
 
 # Principle of operation
 The battery type is detected by a fixed mapping of voltage to type in `BatteryTypeInfoArray[]`.
-While the Mosfet is switched on, the voltage at the 2 ohm shunt resistor is measured to get the current. The voltage at the battery terminal is measured to get the voltage under load.<br/>
+While the Mosfet is switched on, the voltage at the 2 &ohm; shunt resistor is measured to get the current. The voltage at the battery terminal is measured to get the voltage under load.<br/>
 Every second, the Mosfet is deactivated for 10 ms or 100 ms (depending of battery type), the "no load" voltage at the battery terminal is measured and the Mosfet is switched on again.<br/>
 The internal resistance can now be computed from the difference of the load and the no load voltage and the difference of the currents (measured mA and 0 mA).
 
@@ -71,9 +71,9 @@ More details can be found [below](#modes-of-measurement).
 
 # Measurement of battery packs with external load resistor
 Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14 volt require a 5 volt supply of the arduino.<br/>
-Since the build in load resistor is 12 ohm, **the current can go up to 1.4 ampere and the power to 24 watt** and leaving 2.8 watt at the 2 ohm shunt resistors.<br/>
-This is too much for the resistors I used for shunt! A solution is to **add an additional resistor of around 20 ohm in series to the 10 ohm aready built in 10 ohm one**.
-This reduces the current to around 500 mA and power to 9 watt leaving 1 watt at the 2 ohm shunt resistors.<br/>
+Since the build in load resistor is 12 &ohm;, **the current can go up to 1.4 ampere and the power to 24 watt** and leaving 2.8 watt at the 2 &ohm; shunt resistors.<br/>
+This is too much for the resistors I used for shunt! A solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; aready built in 10 &ohm; one**.
+This reduces the current to around 500 mA and power to 9 watt leaving 1 watt at the 2 &ohm; shunt resistors.<br/>
 No other adaptions has to be made.
 
 <br/>

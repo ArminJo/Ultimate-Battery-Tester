@@ -150,7 +150,7 @@ struct BatteryTypeInfoStruct {
 #define NO_BATTERY_INDEX    0
 struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 0, 1000, 0, 0, NO_LOAD, 0 }, /**/
 { "NiCd NiMH ", 1200, NIMH_MAX_FULL_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
-HIGH_LOAD, 100 }, /*400 mA*/
+HIGH_LOAD, 10 }, /*400 mA*/
 { "Alkali    ", 1500, 1550, 1300, 1000, HIGH_LOAD, 100 }, /*500 mA*/
 { "NiZn batt.", 1650, 1800, 1500, 1300, HIGH_LOAD, 100 }, /*550 mA*/
 { "LiFePO4   ", 3200, 3400, 3000, 2700, LOW_LOAD, 10 }, /*270 mA*/
@@ -1355,24 +1355,48 @@ void clearEEPROMTo_FF() {
 
 /*
  * upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
- * @return clipped aDelta | aDelta which is stored
+ *  6 is interpreted as 16 enabling values of 10 (16 -6) to 21 (16 +5) in 2 steps
+ *  7 is interpreted as 28 enabling values of 22 (28 -6) to 33 (28 +5) in 2 steps
+ * -7 is interpreted as -18 enabling values of -13 (-18 +5) to -24 (-18 -6) in 2 steps
+ * -8 is interpreted as -30 enabling values of -25 (-30 +5) to -36 (-30 -6) in 2 steps
+ * @param aDelta        The delta to process
+ * @param *aDeltaTemp   Storage of the upper 4 bit delta, which cannot directly be written to EEPROM
+ * @return  clipped aDelta | aDelta which is stored
  */
 int16_t store4BitDeltas(int16_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddressToStoreValue) {
     if (!sOnlyPlotterOutput) {
         Serial.print(' ');
         Serial.print(aDelta);
     }
-    // clip aDelta to the available range of -8 to 7
-    if (aDelta > 7) {
-        aDelta = 7;
-    } else if (aDelta < -8) {
-        aDelta = -8;
+    uint8_t tDelta;
+    // clip aDelta to the available range
+    if (aDelta > 22) {
+        aDelta = 28;
+        tDelta = 7;
+    } else if (aDelta > 10) {
+        aDelta = 16;
+        tDelta = 6;
+    } else if (aDelta > 5) {
+        aDelta = 5;
+        tDelta = 5;
+    } else if (aDelta < -25) {
+        aDelta = -30;
+        tDelta = -8; // -> 0
+    } else if (aDelta < -13) {
+        aDelta = -18;
+        tDelta = -7; // -> 1
+    } else if (aDelta < -6) {
+        aDelta = -6;
+        tDelta = -6; // -> 2
+    } else {
+        // Here values from -6 to 5
+        tDelta = aDelta;
     }
     /*
      * convert delta to an unsigned value by adding 8 => -8 to 7 -> 0 to F
      * F is +7, 8 is 0, 0 is -8 tDelta is positive now :-)
      */
-    uint8_t tDelta = aDelta + 8;
+    tDelta += 8;
 
     uint8_t tDeltaToStore;
     if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
@@ -1584,6 +1608,28 @@ void printValuesForPlotter(uint16_t aVoltageToPrint, uint16_t aMilliampereToPrin
 }
 
 /*
+ *  6 is interpreted as 16 enabling values of 10 (16 -6) to 21 (16 +5) in 2 steps
+ *  7 is interpreted as 28 enabling values of 22 (28 -6) to 33 (28 +5) in 2 steps
+ * -7 is interpreted as -18 enabling values of -13 (-18 +5) to -24 (-18 -6) in 2 steps
+ * -8 is interpreted as -30 enabling values of -25 (-30 +5) to -36 (-30 -6) in 2 steps
+ */
+int8_t getDelta(uint8_t a4BitDelta) {
+    int8_t tDelta;
+    if (a4BitDelta == 15) {
+        tDelta = 28;
+    } else if (a4BitDelta == 14) {
+        tDelta = 16;
+    } else if (a4BitDelta == 1) {
+        tDelta = -18;
+    } else if (a4BitDelta == 0) {
+        tDelta = -30;
+    } else {
+        // Here values from 2 to 13 converted to -6 to 5
+        tDelta = a4BitDelta - 8;
+    }
+    return tDelta;
+}
+/*
  * Reads EEPROM delta values arrays
  * - print data for plotter and compute ESR on the fly from voltage, current and load resistor
  * - compute capacity from current (if defined SUPPORT_CAPACITY_RESTORE)
@@ -1653,16 +1699,13 @@ void readAndPrintEEPROMData() {
          * Process first part of compressed data
          */
         uint8_t t4BitVoltageDelta = sVoltageDeltaPrintArray[i];
-        int8_t tFirst4BitDelta = (t4BitVoltageDelta >> 4) - 8;
-        tVoltage += tFirst4BitDelta;
+        tVoltage += getDelta(t4BitVoltageDelta >> 4);
 
         uint8_t t4BitMilliampereDelta = sMilliampereDeltaPrintArray[i];
-        tFirst4BitDelta = (t4BitMilliampereDelta >> 4) - 8;
-        tMilliampere += tFirst4BitDelta;
+        tMilliampere += getDelta(t4BitMilliampereDelta >> 4);
 
         uint8_t t4BitMilliohmDelta = sMilliohmDeltaPrintArray[i];
-        tFirst4BitDelta = (t4BitMilliohmDelta >> 4) - 8;
-        tMilliohm += tFirst4BitDelta;
+        tMilliohm += getDelta(t4BitMilliohmDelta >> 4);
 
         tCapacityAccumulator += tMilliampere; // putting this into printValuesForPlotter() increases program size
         /*
@@ -1679,14 +1722,9 @@ void readAndPrintEEPROMData() {
         /*
          * Process second part of compressed data
          */
-        int8_t tSecond4BitDelta = (t4BitVoltageDelta & 0x0F) - 8;
-        tVoltage += tSecond4BitDelta;
-
-        tSecond4BitDelta = (t4BitMilliampereDelta & 0x0F) - 8;
-        tMilliampere += tSecond4BitDelta;
-
-        tSecond4BitDelta = (t4BitMilliohmDelta & 0x0F) - 8;
-        tMilliohm += tSecond4BitDelta;
+        tVoltage += getDelta(t4BitVoltageDelta & 0x0F);
+        tMilliampere += getDelta(t4BitMilliampereDelta & 0x0F);
+        tMilliohm += getDelta(t4BitMilliohmDelta & 0x0F);
 
         /*
          * Restoring capacity value from stored data, which have a bigger sample interval than measured data.
