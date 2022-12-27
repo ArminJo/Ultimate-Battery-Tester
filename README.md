@@ -21,12 +21,12 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 <br/>
 
 # Features
-- **Measures the ESR (equivalent series resistance) of the battery.** This is an idicator of the health of the battery.
-- Stores voltage, current and ESR graph for up to 11 hours in EEPROM while discharging.
+- **Measures the ESR (equivalent series resistance) of the battery.** This is an indicator of the health of the battery.
+- **Stores voltage, current and ESR graph for up to 11 hours as well as capacity in EEPROM** while discharging.
 - Current measurement or EEPROM stored measurement graph can be displayed with Arduino Plotter.
-- Display of no load voltage for independence of load (resistor).
-- Easy continuing of interrupted dicharge measurements.
-- Display of ESR, voltage, current and capacity on a 1602 LCD.
+- Display of no load voltage to be independence from load (resistor).
+- Easy **continuing of interrupted discharge measurements**.
+- Display of ESR, voltage, current and capacity on a **1602 LCD**.
 - Supports **2 load resistors** for different battery voltages to keep current below 600 mA.
 - Supports battery voltages up to 20 volt (@5V Arduino VCC) and external load resistor e.g. for measuring of battery packs.
 
@@ -182,7 +182,9 @@ A value of **59.999 &ohm; indicates overflow** over the maximum value of 65.535 
 ## Mode StoreToEEPROM
 - Every second, a sample is taken and displayed.
 - Every 60 seconds the sample is stored.
-- Every 120 seconds 2 compressed samples are stored to EEPROM and the counter between the voltage and the current in the first row is incremented.
+- For the first 337 samples (5:37 hours) each delta is stored to EEPROM.
+- After the first 337 samples, all data are compressed, and every 120 seconds 2 compressed samples are stored to EEPROM.
+- The number between the voltage and the current in the first row is the EEPROM storage index and incremented at each storage.
 If the no load voltage drops below the cut off voltage or the start/stop button is pressed displays `Capacity stored` for 2 seconds, writes the current capacity to EEPROM and **switches to mode Stopped**.
 
 <pre>
