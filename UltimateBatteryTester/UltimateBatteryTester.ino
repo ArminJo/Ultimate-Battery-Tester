@@ -1298,15 +1298,17 @@ void printBatteryValues() {
      * else print average ESR contained in sBatteryInfo.Milliohm
      */
     uint32_t tMilliohm;
-    if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
+    if (tMeasurementState == STATE_SETUP_AND_READ_EEPROM) {
+        tMilliohm = ValuesForDeltaStorage.lastStoredMilliohm;
+    } else if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
         tMilliohm = sESRHistory[0];
     } else {
         tMilliohm = sBatteryInfo.Milliohm;
     }
     if (!sOnlyPlotterOutput) {
-        Serial.print(F(" ESR "));
-        if (tMilliohm == __UINT16_MAX__ || sBatteryInfo.Milliampere == 0) {
-            Serial.print(F(" overflow "));
+        Serial.print(F(" ESR="));
+        if (tMilliohm == __UINT16_MAX__ || (tMeasurementState != STATE_SETUP_AND_READ_EEPROM && sBatteryInfo.Milliampere == 0)) {
+            Serial.print(F("overflow "));
         } else {
             printAsFloat(tMilliohm);
             Serial.print(F(" ohm "));
@@ -1314,7 +1316,7 @@ void printBatteryValues() {
     }
 #if defined(USE_LCD)
     myLCD.setCursor(0, 1);
-    if (tMilliohm == __UINT16_MAX__ || sBatteryInfo.Milliampere == 0) {
+    if (tMilliohm == __UINT16_MAX__ || (tMeasurementState != STATE_SETUP_AND_READ_EEPROM && sBatteryInfo.Milliampere == 0)) {
         myLCD.print(F("99.999\xF4   ")); // Overflow
     } else {
         LCDPrintAsFloat(tMilliohm);
@@ -1341,6 +1343,7 @@ void printBatteryValues() {
         /*
          * Print capacity
          */
+        Serial.print(F(" capacity="));
         sprintf_P(tString, PSTR("%4u"), sBatteryInfo.CapacityMilliampereHour);
         if (!sOnlyPlotterOutput) {
             Serial.print(tString);
@@ -1813,6 +1816,8 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
          * Print the initial value and no caption to plotter
          */
         printValuesForPlotter(tVoltage, tMilliampere, tMilliohm, false);
+        // Store for last caption print
+        ValuesForDeltaStorage.DeltaArrayIndex = tLastNonZeroIndex;
     }
     // DeltaArrayIndex can be from 0 to MAX_NUMBER_OF_SAMPLES
     for (int i = 0; i < tLastNonZeroIndex; ++i) {
@@ -1904,7 +1909,6 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
      * Loop was processed, handle capacity and LCD display now
      */
     if (!aDoConvertInsteadOfPrint) {
-        ValuesForDeltaStorage.DeltaArrayIndex = tLastNonZeroIndex;
 
         uint16_t tCurrentCapacityMilliampereHourComputed = tCapacityAccumulator / (3600L / NUMBER_OF_SAMPLES_PER_STORAGE);
         if (sBatteryInfo.CapacityMilliampereHour == 0) {
