@@ -8,7 +8,7 @@
  *
  *  Stored and displayed ESR is the average of the ESR's of the last storage period (1 min)
  *
- *  The first 5.6 hours, data is stored to EEPROM in a delta format.
+ *  The first 5.6 hours, data is stored to EEPROM in a delta format. this are 337 + initial samples.
  *  When EEPROM space is exhausted, date is compressed, so another 5.6 hours fit into it.
  *  This allows to store 674 samples of voltage and milliampere and results in 11 h at 1 minute per sample (5 h 37 min at 30 seconds per sample).
  *  For a LIPO this is equivalent to around 3300 mAh.
@@ -19,7 +19,7 @@
  *  The capacity is stored at end of measurement or on button press during the storage.
  *
  *
- *  Copyright (C) 2021-2022  Armin Joachimsmeyer
+ *  Copyright (C) 2021-2023  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  https://github.com/ArminJo/Ultimate-Battery-Tester
@@ -45,6 +45,8 @@
 #include "pitches.h"
 
 /*
+ * Version 3.1 - 3/2023
+ *    Fixed conversion does not clear rest of EEPROM bug
  * Version 3.0 - 12/2022
  *    Improved compression
  * Version 2.3 - 10/2022
@@ -63,7 +65,7 @@
  *    Initial version.
  */
 
-#define VERSION_EXAMPLE "3.0"
+#define VERSION_EXAMPLE "3.1"
 //#define DEBUG
 
 #define LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT          4300 // Voltage if fully loaded
@@ -277,6 +279,8 @@ struct ValuesForDeltaStorageStruct {
     bool compressionIsActive;
     int DeltaArrayIndex; // The index of the next values to be written. -1 to signal, that start values must be written.
 } ValuesForDeltaStorage;
+
+bool sNoConversionToCompressedDataRunning = true;
 
 uint8_t sVoltageDeltaArray[MAX_NUMBER_OF_SAMPLES]; // only used for readAndProcessEEPROMData(), but using local variable increases code size by 100 bytes
 uint8_t sMilliampereDeltaArray[MAX_NUMBER_OF_SAMPLES];
@@ -1383,6 +1387,7 @@ void clearEEPROMTo_FF() {
 }
 
 /*
+ * compressed delta
  * upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
  *  7 / F is interpreted as 28 enabling values of 22 (28 -6) to 33 (28 +5) in 2 steps
  *  6 / E is interpreted as 16 enabling values of 10 (16 -6) to 21 (16 +5) in 2 steps
@@ -1483,14 +1488,14 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
         if (!sOnlyPlotterOutput) {
             Serial.println(F("Store initial values to EEPROM"));
         }
+
+        clearEEPROMTo_FF();
+
         /*
          * Initial values
          * Storing them in a local structure and storing this, costs 50 bytes code size
          * Storing them in a global structure and storing this, costs 30 bytes code size
-         */
-        clearEEPROMTo_FF();
-
-        /*
+         *
          * Initially set up structure for start values, also used for printing
          * and store it to EEPROM
          */
@@ -1520,6 +1525,9 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
              */
             if ((unsigned int) ValuesForDeltaStorage.DeltaArrayIndex < MAX_NUMBER_OF_SAMPLES) {
 
+                if (!sOnlyPlotterOutput) {
+                    Serial.print(F("Store 8 bit deltas:"));
+                }
                 /*
                  * Append value to delta values array
                  */
@@ -1545,7 +1553,8 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
                 ValuesForDeltaStorage.DeltaArrayIndex++; // increase every sample
             } else {
                 if (!sOnlyPlotterOutput) {
-                    Serial.println(F("Convert " STR(MAX_NUMBER_OF_SAMPLES) " uncompressed values to compressed ones"));
+                    Serial.println();
+                    Serial.println(F("Convert " STR(MAX_NUMBER_OF_SAMPLES) " uncompressed stored values to compressed ones"));
                 }
 
                 // Start a new compressed storage
@@ -1553,16 +1562,32 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
                 ValuesForDeltaStorage.compressionIsActive = true;
 
                 /*
-                 * Read all data and process them. This recursively calls storeBatteryValuesToEEPROM(), but we end up below in compressed format
+                 * Read all data and process them. This recursively calls storeBatteryValuesToEEPROM(), but we end up below in code for compressed format
                  */
+                sNoConversionToCompressedDataRunning = false;
                 readAndProcessEEPROMData(true);
+                sNoConversionToCompressedDataRunning = true;
+                /*
+                 * Clear rest of uncompressed EEPROM values
+                 */
+                for (unsigned int i = ValuesForDeltaStorage.DeltaArrayIndex; i < MAX_NUMBER_OF_SAMPLES; ++i) {
+                    eeprom_update_byte(reinterpret_cast<uint8_t*>(&sMillivoltDeltaArrayEEPROM[i]), 0xFF);
+                    eeprom_update_byte(reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM[i]), 0xFF);
+                    eeprom_update_byte(reinterpret_cast<uint8_t*>(&sMilliohmDeltaArrayEEPROM[i]), 0xFF);
+                }
+
                 eeprom_write_byte(&EEPROMStartValues.compressionFlag, FLAG_COMPRESSION); // store compression flag in EEPROM
                 if (!sOnlyPlotterOutput) {
                     Serial.println(F("Conversion done"));
+                    Serial.println();
                 }
             }
+        }
 
-        } else {
+        /*
+         * Check again, in order to store also the value which triggered the conversion
+         */
+        if (ValuesForDeltaStorage.compressionIsActive) {
             /*
              * Store data in compressed format here
              */
@@ -1617,7 +1642,7 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
         }
     }
 
-    printValuesForPlotter(aVoltageNoLoadMillivolt, aMilliampere, aMilliohm, true);
+    printValuesForPlotter(aVoltageNoLoadMillivolt, aMilliampere, aMilliohm, sNoConversionToCompressedDataRunning);
 }
 
 void storeCapacityToEEPROM() {
@@ -1827,7 +1852,7 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
              * Uncompressed
              */
             if (!sOnlyPlotterOutput) {
-                Serial.print(F("EEPROM Values="));
+                Serial.print(F("EEPROM values="));
                 Serial.print((int8_t) sVoltageDeltaArray[i]);
                 Serial.print(' ');
                 Serial.print((int8_t) sMilliampereDeltaArray[i]);
@@ -1843,6 +1868,8 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
                  * Convert uncompressed values here
                  */
                 storeBatteryValuesToEEPROM(tVoltage, tMilliampere, tMilliohm);
+//                Serial.print(F("Stored result "));
+//                printValuesForPlotter(ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt, ValuesForDeltaStorage.lastStoredMilliampere, ValuesForDeltaStorage.lastStoredMilliohm, false);
             }
             tCapacityAccumulator += tMilliampere; // putting this into printValuesForPlotter() increases program size
 
@@ -1851,7 +1878,7 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
              * Compressed
              */
             if (!sOnlyPlotterOutput) {
-                Serial.print(F("EEPROM Values=0x"));
+                Serial.print(F("EEPROM values=0x"));
                 Serial.print(sVoltageDeltaArray[i], HEX);
                 Serial.print(F(" 0x"));
                 Serial.print(sMilliampereDeltaArray[i], HEX);
