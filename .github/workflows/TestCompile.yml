@@ -46,6 +46,6 @@ jobs:
         uses: ArminJo/arduino-test-compile@master
         with:
           arduino-board-fqbn: arduino:avr:nano:cpu=atmega328
-          required-libraries: 'EasyButtonAtInt01,${{ matrix.required-libraries }}'
+          required-libraries: '${{ matrix.required-libraries }}'
           build-properties: '{ "All": ${{ toJson(matrix.build-properties) }} }'
 #          debug-install: true
