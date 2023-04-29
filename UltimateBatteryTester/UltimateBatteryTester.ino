@@ -570,7 +570,7 @@ void loop() {
          */
         if (sMeasurementState == STATE_STOPPED) {
             /*
-             * Check for attention every 10 minute
+             * Check for attention every 10 minute, after the current measurement was finished
              */
             if (millis() - sLastStateStoppedBeepMillis >= STATE_STOP_ATTENTION_PERIOD_MILLIS) {
                 sLastStateStoppedBeepMillis = millis();

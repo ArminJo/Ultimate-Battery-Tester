@@ -44,7 +44,10 @@ The cut off voltage can be changed to lower values by connecting pin 11 to groun
 # Battery ESR
 The internal resistance is an indicator of the health of the cell. E.g. if a NiMH cell has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA**, which may be to low for the circuit to work properly.
 ESR values for NiMH can go down to excellent 0.05 &ohm;.<br/>
-Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;.
+Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;
+
+It seems that the **dynamic ESR** measured by devices like **YR1035+** is around half as much as the **?static? ESR** measured by this program. 
+This was suprising for me, since I expected only a fixed offset, because of connection imperfections.
 
 Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement. **The displayed voltage is the "no load" voltage**, to be independent of the current load resistor.
 ![2155mAh_53mOhm](pictures/2155mAh_53mOhm.png)
