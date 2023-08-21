@@ -321,7 +321,7 @@ void LCDClearLine(uint8_t aLineNumber);
  */
 #include "EasyButtonAtInt01.hpp"
 void handleStartStopButtonPress(bool aButtonToggleState);   // The button press callback function
-EasyButton Button0AtPin2(&handleStartStopButtonPress);      // Button is connected to INT0 (pin2)
+EasyButton startStopButton0AtPin2(&handleStartStopButtonPress);      // Button is connected to INT0 (pin2)
 
 /*
  * Imports and definitions for LCD
@@ -409,7 +409,7 @@ void setup() {
 #  if defined(USE_SERIAL_LCD)
     myLCD.init();
     myLCD.clear();
-    myLCD.backlight();
+    myLCD.backlight(); // Switch backlight LED on
 #  endif
 #  if defined(USE_PARALLEL_LCD)
     myLCD.begin(LCD_COLUMNS, LCD_ROWS);
@@ -424,11 +424,13 @@ void setup() {
     myLCD.print(F(VERSION_EXAMPLE "  " __DATE__));
     delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 
+    myLCD.setCursor(0, 1);
     if (sOnlyPlotterOutput) {
-        myLCD.setCursor(0, 1);
         myLCD.print(F("Only plotter out"));
-        delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+    } else {
+        myLCD.print(F("No plotter out  "));
     }
+    delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
 
     tone(PIN_TONE, 2200, 100); // usage of tone() costs 1524 bytes code space
@@ -764,7 +766,7 @@ void handleStartStopButtonPress(bool aButtonToggleState) {
         return;
     }
 
-    if (Button0AtPin2.checkForDoublePress(LCD_MESSAGE_PERSIST_TIME_MILLIS)) {
+    if (startStopButton0AtPin2.checkForDoublePress(LCD_MESSAGE_PERSIST_TIME_MILLIS)) {
         /*
          * Double press detected!
          * Go to STATE_STOPPED
