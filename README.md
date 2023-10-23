@@ -113,11 +113,11 @@ Battery Tester
 2.0 MAR 1 2022
 ```
 
-If pin `PIN_ONLY_PLOTTER_OUTPUT` (pin 10) is held low, then the message "Only plotter out" is displayed in the second row for 2 seconds.
+The message "No plotter out" is displayed in the second row for 2 seconds. If pin `PIN_ONLY_PLOTTER_OUTPUT` (pin 10) is held low, then the message "Only plotter out" is displayed.
 
 ```
 Battery Tester
-Only plotter out
+No plotter out
 ```
 
 Then it prints the data read from EEPROM to serial monitor and displays ESR and capacity.
@@ -127,9 +127,9 @@ The Arduino supply voltage (VCC) together with the message "Stored data" is disp
 0.222&ohm;   1212mAh
 </pre>
 
-Then the message "cut off is high" or "low" is displayed in the first row for 2 seconds.
+Then the message "cutoff high" or "low"  and the cutoff voltage is displayed in the first row for 2 seconds. On startup, it is the cutoff voltage for the battery type stored last in EEPROM.
 <pre>
-cut off is high
+cutoff high 3.5V
 0.222&ohm;   1212mAh
 </pre>
 
@@ -153,7 +153,7 @@ NiCd NiMH found
 ```
 for 2 seconds.
 **From now on, the start/stop button is enabled.**<br/>
-Then the messages "dbl press = stop",  and "Press button to append to EEPROM" are displayed for 2 seconds each.
+Then the messages "dbl press = stop",  and "Press button to append to EEPROM" are displayed for 2 seconds each, but only once after boot.
 
 <pre>
 dbl press = stop
@@ -197,15 +197,26 @@ If the no load voltage drops below the cut off voltage or the start/stop button 
 
 
 ## Mode Stopped
-The battery no load voltage is displayed in the first row.
+The battery no load voltage is displayed in the first row. "Finished" is displayed after reaching the cutoff voltage, "Stopped" is displayed after manual stopping by double press.
 
 <pre>
 1.120V Finished (or Stopped)
 0.073&ohm;    467mAh
 </pre>
 
-A press of the start/stop button **switches to mode DetectingBattery**.
+A press of the start/stop button shows
+<pre>
+start again
+</pre>
 
+and **switches to mode DetectingBattery**.
+
+## Cutoff display
+If the state of the `PIN_DISCHARGE_TO_LOW` pin changes, the message "cutoff high" or "low" and the according cutoff voltage is displayed in the first row for 2 seconds.
+
+<pre>
+cutoff high 3.5V
+</pre>
 
 # Revision History
 ### Version 2.3.0

@@ -45,6 +45,8 @@
 #include "pitches.h"
 
 /*
+ * Version 3.2 - 10/2023
+ *    Cutoff LCD message improved
  * Version 3.1 - 3/2023
  *    Fixed conversion does not clear rest of EEPROM bug
  * Version 3.0 - 12/2022
@@ -65,7 +67,7 @@
  *    Initial version.
  */
 
-#define VERSION_EXAMPLE "3.1"
+#define VERSION_EXAMPLE "3.2"
 //#define DEBUG
 
 #define LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT          4300 // Voltage if fully loaded
@@ -642,20 +644,50 @@ void printDischargeToLowState() {
     sDischargeToLow = !digitalRead(PIN_DISCHARGE_TO_LOW);
     if (tDischargeToLow != sDischargeToLow) {
         if (!sOnlyPlotterOutput) {
-            if (sDischargeToLow) {
-                Serial.println(F("Discharge to lower voltage. e.g. 3000 mV for Li-ion"));
+            if (sBatteryInfo.TypeIndex == NO_BATTERY_INDEX) {
+                if (sDischargeToLow) {
+                    Serial.println(F("Discharge to lower voltage. e.g. 3000 mV for Li-ion"));
+                } else {
+                    Serial.println(F("Discharge to non critical voltage. e.g. 3500 mV for Li-ion"));
+                }
             } else {
-                Serial.println(F("Discharge to non critical voltage. e.g. 3500 mV for Li-ion"));
+                if (sDischargeToLow) {
+                    Serial.print(F("Discharge to low voltage "));
+                    Serial.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivoltLow);
+                    Serial.println(F(" mV"));
+                } else {
+                    Serial.print(F("Discharge to non critical voltage "));
+                    Serial.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt);
+                    Serial.println(F(" mV"));
+                }
             }
         }
 #if defined(USE_LCD)
         myLCD.setCursor(0, 0);
-        myLCD.print(F("Cut off is "));
-        if (sDischargeToLow) {
-            myLCD.print(F("low  "));
+        if (sBatteryInfo.TypeIndex == NO_BATTERY_INDEX) {
+            myLCD.print(F("Cut off is "));
+            if (sDischargeToLow) {
+                myLCD.print(F("low  "));
+            } else {
+                myLCD.print(F("high "));
+            }
         } else {
-            myLCD.print(F("high "));
+            myLCD.print(F("Cutoff "));
+            uint16_t tSwitchOffVoltageMillivolt;
+            if (sDischargeToLow) {
+                myLCD.print(F("low "));
+                tSwitchOffVoltageMillivolt = BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivoltLow;
+            } else {
+                myLCD.print(F("high"));
+                tSwitchOffVoltageMillivolt = BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt;
+            }
+            if (tSwitchOffVoltageMillivolt < 10000) {
+                myLCD.print(' ');
+            }
+            myLCD.print(((float) tSwitchOffVoltageMillivolt) / 1000, 1);
+            myLCD.print('V');
         }
+
         delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
     }
@@ -1179,8 +1211,8 @@ bool detectAndPrintBatteryType() {
         myLCD.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].TypeName);
         myLCD.print(F(" found"));
         // The current battery voltage is displayed, so clear "No batt." message selectively
-        myLCD.setCursor(8, 0);
-        myLCD.print(F("        "));
+        myLCD.setCursor(7, 0);
+        myLCD.print(F("         "));
         delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
         LCDClearLine(1);
 #endif

@@ -112,9 +112,6 @@
 #error "No temperature channel definitions specified for this AVR CPU"
 #endif
 
-extern float sVCCVoltage;
-extern uint16_t sVCCVoltageMillivolt;
-
 extern long sLastVCCCheckMillis;
 extern uint8_t sVCCTooLowCounter;
 
@@ -124,13 +121,12 @@ uint16_t waitAndReadADCChannelWithReference(uint8_t aADCChannelNumber, uint8_t a
 uint16_t waitAndReadADCChannelWithReferenceAndRestoreADMUXAndReference(uint8_t aADCChannelNumber, uint8_t aReference);
 uint16_t readADCChannelWithOversample(uint8_t aADCChannelNumber, uint8_t aOversampleExponent);
 void setADCChannelAndReferenceForNextConversion(uint8_t aADCChannelNumber, uint8_t aReference);
-uint16_t readADCChannelWithReferenceOversample(uint8_t aADCChannelNumber, uint8_t aReference, uint8_t aOversampleExponent);
 uint16_t readADCChannelWithReferenceOversampleFast(uint8_t aADCChannelNumber, uint8_t aReference, uint8_t aOversampleExponent);
 uint16_t readADCChannelWithReferenceMultiSamples(uint8_t aADCChannelNumber, uint8_t aReference, uint8_t aNumberOfSamples);
 uint16_t readADCChannelWithReferenceMax(uint8_t aADCChannelNumber, uint8_t aReference, uint16_t aNumberOfSamples);
 uint16_t readADCChannelWithReferenceMaxMicros(uint8_t aADCChannelNumber, uint8_t aReference, uint16_t aMicrosecondsToAquire);
-uint16_t readUntil4ConsecutiveValuesAreEqual(uint8_t aADCChannelNumber, uint8_t aReference, uint8_t aDelay, uint8_t aAllowedDifference,
-        uint8_t aMaxRetries);
+uint16_t readUntil4ConsecutiveValuesAreEqual(uint8_t aADCChannelNumber, uint8_t aReference, uint8_t aDelay,
+        uint8_t aAllowedDifference, uint8_t aMaxRetries);
 
 uint8_t checkAndWaitForReferenceAndChannelToSwitch(uint8_t aADCChannelNumber, uint8_t aReference);
 
@@ -139,9 +135,7 @@ uint8_t checkAndWaitForReferenceAndChannelToSwitch(uint8_t aADCChannelNumber, ui
  */
 float getVCCVoltageSimple(void);
 void readVCCVoltageSimple(void);
-uint16_t getVCCVoltageMillivoltSimple(void);
 void readVCCVoltageMillivoltSimple(void);
-float getVCCVoltage(void);
 void readVCCVoltage(void);
 uint16_t getVCCVoltageMillivolt(void);
 void readVCCVoltageMillivolt(void);
@@ -152,8 +146,9 @@ void readAndPrintVCCVoltageMillivolt(Print *aSerial);
 uint16_t getVoltageMillivolt(uint16_t aVCCVoltageMillivolt, uint8_t aADCChannelForVoltageMeasurement);
 uint16_t getVoltageMillivolt(uint8_t aADCChannelForVoltageMeasurement);
 uint16_t getVoltageMillivoltWith_1_1VoltReference(uint8_t aADCChannelForVoltageMeasurement);
-float getTemperatureSimple(void);
-float getTemperature(void);
+float getCPUTemperatureSimple(void);
+float getCPUTemperature(void);
+float getTemperature(void) __attribute__ ((deprecated ("Renamed to getCPUTemperature()"))); // deprecated
 
 bool isVCCTooLowMultipleTimes();
 void resetVCCTooLowMultipleTimes();
@@ -162,4 +157,17 @@ bool isVCCTooHigh();
 bool isVCCTooHighSimple();
 
 #endif //  defined(__AVR__) ...
+
+/*
+ * Variables and functions defined as dummies to allow for seamless compiling on non AVR platforms
+ */
+extern float sVCCVoltage;
+extern uint16_t sVCCVoltageMillivolt;
+
+uint16_t readADCChannelWithReferenceOversample(uint8_t aADCChannelNumber, uint8_t aReference, uint8_t aOversampleExponent);
+
+uint16_t getVCCVoltageMillivoltSimple(void);
+float getVCCVoltage(void);
+float getCPUTemperature(void);
+
 #endif // _ADC_UTILS_H
