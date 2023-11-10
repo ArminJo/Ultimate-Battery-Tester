@@ -219,8 +219,15 @@ cutoff high 3.5V
 </pre>
 
 # Revision History
-### Version 2.3.0
-- Attention each minute in STATE_DETECTING_BATTERY.
+### Version 3.2.0
+- Cutoff message improved.
+
+### Version 3.1.0
+- Fixed "conversion does not clear rest of EEPROM" bug.
+
+### Version 3.0.0
+- Improved compression.
+- Attention by short beep each minute in STATE_DETECTING_BATTERY.
 
 ### Version 2.2.0
 - ESR > 64 bug fixed.

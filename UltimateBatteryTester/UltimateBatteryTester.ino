@@ -48,7 +48,7 @@
  * Version 3.2 - 10/2023
  *    Cutoff LCD message improved
  * Version 3.1 - 3/2023
- *    Fixed conversion does not clear rest of EEPROM bug
+ *    Fixed "conversion does not clear rest of EEPROM" bug
  * Version 3.0 - 12/2022
  *    Improved compression
  * Version 2.3 - 10/2022
