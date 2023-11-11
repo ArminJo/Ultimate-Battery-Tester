@@ -102,68 +102,58 @@ Download and extract the repository. In the Arduino IDE open the sketch with Fil
 If pin 10 is connected to ground, verbose output for Arduino Serial Monitor is enabled. Verbose output is not suitable for Arduino Plotter.<br/>
 If pin 11 is connected to ground, "cut off is low" is displayed and discharge ends at a lower voltage. E.g. Li-ion discharge ends at 3000 mV instead of 3500 mV.
 
+# Examples on Wokwi
+The screenshots below are taken from this [Wokwi example](https://wokwi.com/projects/381051341790948353).
+
+![Wokwi](pictures/Wokwi.png)
+
 # Modes of measurement
 After reset the tester starts with mode Setup:
 
 ## Mode Setup
 After boot, the tester displays its name and version and date for 2 seconds.
 
-```
-Battery Tester
-2.0 MAR 1 2022
-```
+![BatteryTester](pictures/BatteryTester.png)
 
 The message "No plotter out" is displayed in the second row for 2 seconds. If pin `PIN_ONLY_PLOTTER_OUTPUT` (pin 10) is held low, then the message "Only plotter out" is displayed.
 
-```
-Battery Tester
-No plotter out
-```
+![NoPlotterOut](pictures/NoPlotterOut.png)
+
 
 Then it prints the data read from EEPROM to serial monitor and displays ESR and capacity.
 The Arduino supply voltage (VCC) together with the message "Stored data" is displayed in the first row for 2 seconds.
-<pre>
-4.8V Stored data
-0.222&ohm;   1212mAh
-</pre>
+
+![StoredData](pictures/StoredData.png)
 
 Then the message "cutoff high" or "low"  and the cutoff voltage is displayed in the first row for 2 seconds. On startup, it is the cutoff voltage for the battery type stored last in EEPROM.
-<pre>
-cutoff high 3.5V
-0.222&ohm;   1212mAh
-</pre>
+
+![CutoffHigh](pictures/CutoffHigh.png)
+![CutoffLow](pictures/CutoffLow.png)
 
 and then mode is **switched to DetectingBattery**.
-A double press during 2 seconds always displays `Stop measurement` for 2 seconds and then **switches to mode Stopped**.
+A double press during 2 seconds always displays `Stop measurement` for 2 seconds and then **switches to mode Stopped**. Another press will start again.
 
+![StopMeasurement](pictures/StopMeasurement.png)
+![Stopped](pictures/Stopped.png)
+
+![StartAgain](pictures/StartAgain.png)
 
 ## Mode DetectingBattery
 If no battery is inserted, the Arduino supply voltage (VCC) together with the message "No batt." is displayed in the first row until a battery is inserted.
 
-<pre>
-4.8V    No batt.
-0.222&ohm;   1212mAh
-</pre>
+![NoBatt](pictures/NoBatt.png)
 
 If a battery is inserted, you see e.g.
 
-```
-1.247V
-NiCd NiMH found
-```
+![LiIoFound](pictures/LiIoFound.png)
+
 for 2 seconds.
 **From now on, the start/stop button is enabled.**<br/>
 Then the messages "dbl press = stop",  and "Press button to append to EEPROM" are displayed for 2 seconds each, but only once after boot.
 
-<pre>
-dbl press = stop
-0.222&ohm;   1212mAh
-</pre>
+![DblPress](pictures/DblPress.png)
+![PressButtonToAppend](pictures/PressButtonToAppend.png)
 
-```
-Press button to
-append to EEPROM
-```
 After this, the mode is **switched to InitialESRMeasurement**.
 
 ## Mode InitialESRMeasurement
@@ -173,10 +163,7 @@ A button press during the 30 seconds **switches directly to mode StoreToEEPROM a
 This enables it to connect the tester to the Arduino Serial Plotter at any time in the measurement without loosing data already acquired.
 Because connecting to the Serial Plotter always resets the tester, we must be able to avoid to start a fresh measurement after reset.
 
-<pre>
-1.247V 12 331mA
-0.688&ohm;   0.228V
-</pre>
+![InitialESRMeasurement](pictures/InitialESRMeasurement.png)
 
 In the first row the **no load voltage** of the battery, the **30 second countdown** and the **load current** is displayed.
 In the second row the **ESR** and the **difference between the load and no load voltage**, used to compute the ESR, is dispayed.<br/>
@@ -188,35 +175,28 @@ A value of **59.999 &ohm; indicates overflow** over the maximum value of 65.535 
 - For the first 337 samples (5:37 hours) each delta is stored to EEPROM.
 - After the first 337 samples, all data are compressed, and every 120 seconds 2 compressed samples are stored to EEPROM.
 - The number between the voltage and the current in the first row is the EEPROM storage index and incremented at each storage.
-If the no load voltage drops below the cut off voltage or the start/stop button is pressed displays `Capacity stored` for 2 seconds, writes the current capacity to EEPROM and **switches to mode Stopped**.
+If the no load voltage drops below the cut off voltage or the start/stop button is pressed displays `Capacity stored` for 2 seconds,
+writes the current capacity to EEPROM and **switches to mode Stopped**.
 
-<pre>
-1.277V  38 407mA
-0.073&ohm;    467mAh
-</pre>
+![Finished](pictures/Finished.png)
+![CapacityStored](pictures/CapacityStored.png)
 
 
 ## Mode Stopped
-The battery no load voltage is displayed in the first row. "Finished" is displayed after reaching the cutoff voltage, "Stopped" is displayed after manual stopping by double press.
+The battery no load voltage is displayed in the first row. "Finished" is displayed after reaching the cutoff voltage,
+"Stopped" is displayed after manual stopping by double press.
 
-<pre>
-1.120V Finished (or Stopped)
-0.073&ohm;    467mAh
-</pre>
-
-A press of the start/stop button shows
-<pre>
-start again
-</pre>
+![Finished](pictures/Finished.png)
+![StartAgain](pictures/StartAgain.png)
 
 and **switches to mode DetectingBattery**.
 
 ## Cutoff display
-If the state of the `PIN_DISCHARGE_TO_LOW` pin changes, the message "cutoff high" or "low" and the according cutoff voltage is displayed in the first row for 2 seconds.
+If the state of the `PIN_DISCHARGE_TO_LOW` pin changes, the message "cutoff high" or "low"
+and the according cutoff voltage is displayed in the first row for 2 seconds.
 
-<pre>
-cutoff high 3.5V
-</pre>
+![CutoffHigh](pictures/CutoffHigh.png)
+![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
 ### Version 3.2.0
