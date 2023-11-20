@@ -28,6 +28,7 @@ jobs:
           - -DUSE_NO_LCD
           - -DUSE_SERIAL_LCD
           - -DUSE_PARALLEL_LCD
+          - -DBUTTON_IS_ACTIVE_HIGH
         include:
           - build-properties: -DUSE_NO_LCD
             required-libraries: LiquidCrystal # workaround, because Arduino cli wants this library in this case :-(
@@ -37,6 +38,9 @@ jobs:
 
           - build-properties: -DUSE_SERIAL_LCD
             required-libraries: LiquidCrystal I2C
+
+          - build-properties: -DBUTTON_IS_ACTIVE_HIGH
+            required-libraries: LiquidCrystal
 
     steps:
       - name: Checkout

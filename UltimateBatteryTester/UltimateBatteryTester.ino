@@ -45,6 +45,8 @@
 #include "pitches.h"
 
 /*
+ * Version 3.2.1 - 11/2023
+ *    BUTTON_IS_ACTIVE_HIGH is not default any more
  * Version 3.2 - 10/2023
  *    Cutoff LCD message improved
  * Version 3.1 - 3/2023
@@ -70,14 +72,6 @@
 #define VERSION_EXAMPLE "3.2"
 //#define DEBUG
 
-#define LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT          4300 // Voltage if fully loaded
-#define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT        3500 // Switch off voltage for Li-ion capacity measurement
-#define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for Li-ion capacity measurement
-
-#define NIMH_MAX_FULL_VOLTAGE_MILLIVOLT            1460 // Voltage if fully loaded
-#define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
-#define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW      1000 // Switch off voltage for NI-MH capacity measurement
-
 /*
  * You should calibrate your ADC readout by replacing this value with the voltage you measured a the AREF pin after the program started.
  * For my Nanos I measured e.g. 1060 mV and 1093 mV.
@@ -85,38 +79,6 @@
 #if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT)
 #define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100L // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
-
-#define MILLIS_IN_ONE_SECOND 1000L
-#define SECONDS_IN_ONE_MINUTE 60L
-
-/*
- * Activate the type of LCD you use
- * Default is parallel LCD with 2 rows of 16 characters (1602).
- * Serial LCD uses A4/A5 - the hardware I2C pins on Arduino
- */
-#if !defined(USE_SERIAL_LCD) && !defined(USE_PARALLEL_LCD) && !defined(USE_NO_LCD)
-#define USE_PARALLEL_LCD
-#endif
-//#define USE_SERIAL_LCD
-
-/*
- * Measurement timing
- */
-//#define TEST // to speed up testing the code
-#if defined(TEST)
-#define STATE_INITIAL_ESR_DURATION_SECONDS        4 // 4 seconds (-2 for initial display of append message) before starting discharge and storing, to have time to just test for ESR of battery.
-#define NUMBER_OF_SAMPLES_PER_STORAGE             5 // 1 minute, if we have 1 sample per second
-#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS   500 // The time of the activated load for one sample.
-#else
-#define STATE_INITIAL_ESR_DURATION_SECONDS       32 // 32 seconds (-2 for initial display of append message) before starting discharge and storing, to have time to just test for ESR of battery.
-#define NUMBER_OF_SAMPLES_PER_STORAGE            60 // 1 minute, if we have 1 sample per second
-#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS   MILLIS_IN_ONE_SECOND // The time of the activated load for one sample.
-#endif
-
-#define MAX_VALUES_DISPLAYED_IN_PLOTTER         500 // The Arduino 1.8 Plotter displays 500 values before scrolling
-#define BATTERY_DETECTION_PERIOD_MILLIS         (MILLIS_IN_ONE_SECOND / 2) // 500 ms
-
-#define BATTERY_DETECTION_MINIMAL_MILLIVOLT     100
 
 /*
  * Pin and ADC definitions
@@ -135,10 +97,7 @@
 #define PIN_DISCHARGE_TO_LOW        11 // If connected to ground, "cut off is low" is displayed and discharge ends at a lower voltage. E.g. Li-ion discharge ends at 3000 mV instead of 3500 mV
 
 #define USE_BUTTON_0            // Enable code for button 0 at INT0 / pin 2.
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// !!! I have an active high button attached !!!
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-#define BUTTON_IS_ACTIVE_HIGH
+//#define BUTTON_IS_ACTIVE_HIGH   // If you have an active high button (sensor button) attached
 
 /*
  * External circuit definitions
@@ -149,9 +108,70 @@
 #define ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE    2L       // Divider with 100 kOhm and 100 kOhm -> 2.2 V range
 #define ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE   4L       // Divider with 100 kOhm and 33.333 kOhm -> 4.4 V range
 
-#define NO_LOAD     0
-#define LOW_LOAD    1 // 12 ohm
-#define HIGH_LOAD   2 // 3 ohm
+/*
+ * Imports and definitions for start/stop button at pin 2
+ */
+#include "EasyButtonAtInt01.hpp"
+void handleStartStopButtonPress(bool aButtonToggleState);   // The button press callback function
+EasyButton startStopButton0AtPin2(&handleStartStopButtonPress);      // Button is connected to INT0 (pin2)
+
+/*
+ * Activate the type of LCD you use
+ * Default is parallel LCD with 2 rows of 16 characters (1602).
+ * Serial LCD uses A4/A5 - the hardware I2C pins on Arduino
+ */
+#if !defined(USE_SERIAL_LCD) && !defined(USE_PARALLEL_LCD) && !defined(USE_NO_LCD)
+#define USE_PARALLEL_LCD
+#endif
+//#define USE_SERIAL_LCD
+
+// definitions for a 1602 LCD
+#define LCD_COLUMNS 16
+#define LCD_ROWS 2
+
+#define LCD_MESSAGE_PERSIST_TIME_MILLIS     2000 // 2 second to view a message on LCD
+#if defined(USE_SERIAL_LCD)
+#include <LiquidCrystal_I2C.h> // Use an up to date library version which has the init method
+#endif
+#if defined(USE_PARALLEL_LCD)
+#include "LiquidCrystal.h"
+#endif
+
+#if defined(USE_SERIAL_LCD) && defined(USE_PARALLEL_LCD)
+#error Cannot use parallel and serial LCD simultaneously
+#endif
+#if defined(USE_SERIAL_LCD) || defined(USE_PARALLEL_LCD)
+#define USE_LCD
+#endif
+
+#if defined(USE_SERIAL_LCD)
+LiquidCrystal_I2C myLCD(0x27, LCD_COLUMNS, LCD_ROWS);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+#endif
+#if defined(USE_PARALLEL_LCD)
+//LiquidCrystal myLCD(2, 3, 4, 5, 6, 7);
+//LiquidCrystal myLCD(7, 8, A0, A1, A2, A3);
+LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
+#endif
+
+/*
+ * Measurement timing
+ */
+#define MILLIS_IN_ONE_SECOND 1000L
+#define SECONDS_IN_ONE_MINUTE 60L
+//#define TEST // to speed up testing the code
+#if defined(TEST)
+#define STATE_INITIAL_ESR_DURATION_SECONDS        4 // 4 seconds (-2 for initial display of append message) before starting discharge and storing, to have time to just test for ESR of battery.
+#define NUMBER_OF_SAMPLES_PER_STORAGE             5 // 1 minute, if we have 1 sample per second
+#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS   500 // The time of the activated load for one sample.
+#else
+#define STATE_INITIAL_ESR_DURATION_SECONDS       32 // 32 seconds (-2 for initial display of append message) before starting discharge and storing, to have time to just test for ESR of battery.
+#define NUMBER_OF_SAMPLES_PER_STORAGE            60 // 1 minute, if we have 1 sample per second
+#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS   MILLIS_IN_ONE_SECOND // The time of the activated load for one sample.
+#endif
+
+#define MAX_VALUES_DISPLAYED_IN_PLOTTER         500 // The Arduino 1.8 Plotter displays 500 values before scrolling
+#define BATTERY_DETECTION_PERIOD_MILLIS         (MILLIS_IN_ONE_SECOND / 2) // 500 ms
+#define BATTERY_DETECTION_MINIMAL_MILLIVOLT     100
 
 /*
  * Values for different battery types
@@ -165,6 +185,19 @@ struct BatteryTypeInfoStruct {
     uint8_t LoadType; // High (3 Ohm) or low (12 Ohm)
     uint16_t LoadSwitchSettleTimeMillis; // Time for voltage to settle after load switch was disabled
 };
+
+#define LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT          4300 // Voltage if fully loaded
+#define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT        3500 // Switch off voltage for Li-ion capacity measurement
+#define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for Li-ion capacity measurement
+
+#define NIMH_MAX_FULL_VOLTAGE_MILLIVOLT            1460 // Voltage if fully loaded
+#define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
+#define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW      1000 // Switch off voltage for NI-MH capacity measurement
+
+#define NO_LOAD     0
+#define LOW_LOAD    1 // 12 ohm
+#define HIGH_LOAD   2 // 3 ohm
+
 #define NO_BATTERY_INDEX    0
 struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 0, 1000, 0, 0, NO_LOAD, 0 }, /**/
 { "NiCd NiMH ", 1200, NIMH_MAX_FULL_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
@@ -317,44 +350,6 @@ void switchToStateStopped(bool aWriteToLCD = true);
 
 void TogglePin(uint8_t aPinNr);
 void LCDClearLine(uint8_t aLineNumber);
-
-/*
- * Imports and definitions for start/stop button at pin 2
- */
-#include "EasyButtonAtInt01.hpp"
-void handleStartStopButtonPress(bool aButtonToggleState);   // The button press callback function
-EasyButton startStopButton0AtPin2(&handleStartStopButtonPress);      // Button is connected to INT0 (pin2)
-
-/*
- * Imports and definitions for LCD
- */
-#define LCD_MESSAGE_PERSIST_TIME_MILLIS     2000 // 2 second to view a message on LCD
-#if defined(USE_SERIAL_LCD)
-#include <LiquidCrystal_I2C.h> // Use an up to date library version which has the init method
-#endif
-#if defined(USE_PARALLEL_LCD)
-#include "LiquidCrystal.h"
-#endif
-
-// definitions for a 1602 LCD
-#define LCD_COLUMNS 16
-#define LCD_ROWS 2
-
-#if defined(USE_SERIAL_LCD) && defined(USE_PARALLEL_LCD)
-#error Cannot use parallel and serial LCD simultaneously
-#endif
-#if defined(USE_SERIAL_LCD) || defined(USE_PARALLEL_LCD)
-#define USE_LCD
-#endif
-
-#if defined(USE_SERIAL_LCD)
-LiquidCrystal_I2C myLCD(0x27, LCD_COLUMNS, LCD_ROWS);  // set the LCD address to 0x27 for a 16 chars and 2 line display
-#endif
-#if defined(USE_PARALLEL_LCD)
-//LiquidCrystal myLCD(2, 3, 4, 5, 6, 7);
-//LiquidCrystal myLCD(7, 8, A0, A1, A2, A3);
-LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
-#endif
 
 #define VCC_CHECK_THRESHOLD_MILLIVOLT     3500 // 3.5 volt
 #define VCC_CHECK_PERIOD_SECONDS            (60 * 5L) // check every 5 minutes if VCC is below VCC_CHECK_THRESHOLD_MILLIVOLT
