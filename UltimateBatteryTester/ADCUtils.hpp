@@ -481,7 +481,7 @@ void readAndPrintVCCVoltageMillivolt(Print *aSerial) {
 void readVCCVoltageSimple(void) {
     // use AVCC with (optional) external capacitor at AREF pin as reference
     float tVCC = readADCChannelWithReferenceMultiSamples(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT, 4);
-    sVCCVoltage = (1023 * 1.1 * 4) / tVCC;
+    sVCCVoltage = (1023 * (((float) ADC_INTERNAL_REFERENCE_MILLIVOLT) / 1000) * 4) / tVCC;
 }
 
 /*

@@ -9,7 +9,7 @@
  *  Stored and displayed ESR is the average of the ESR's of the last storage period (1 min)
  *
  *  The first 5.6 hours, data is stored to EEPROM in a delta format. this are 337 + initial samples.
- *  When EEPROM space is exhausted, date is compressed, so another 5.6 hours fit into it.
+ *  When EEPROM space is exhausted, data is compressed, so another 5.6 hours fit into it.
  *  This allows to store 674 samples of voltage and milliampere and results in 11 h at 1 minute per sample (5 h 37 min at 30 seconds per sample).
  *  For a LIPO this is equivalent to around 3300 mAh.
  *  One EEPROM block contains the initial voltage and current values as well as the capacity, battery type and value of the used load resistor.
@@ -45,6 +45,8 @@
 #include "pitches.h"
 
 /*
+ * Version 3.2.2 - 11/2023
+ *    If powered by USB plotter pin logic is reversed, i.e. plotter output is enabled if NOT connected to ground.
  * Version 3.2.1 - 11/2023
  *    BUTTON_IS_ACTIVE_HIGH is not default any more
  * Version 3.2 - 10/2023
@@ -93,12 +95,16 @@
 #define PIN_LOAD_LOW                12 // This pin is high to switch on the low load (10 ohm). A4 is occupied by I2C for serial LCD display.
 #define PIN_TONE                     9
 // Mode pins
-#define PIN_ONLY_PLOTTER_OUTPUT     10 // Verbose output to Arduino Serial Monitor is disabled, if connected to ground. This is intended for Arduino Plotter mode.
+#define VOLTAGE_USB_LOWER_THRESHOLD_MILLIVOLT   4300   // Assume USB powered, if voltage is higher, PIN_ONLY_PLOTTER_OUTPUT logic is reversed. I.e. plotter output is enabled if NOT connected to ground.
+#define PIN_ONLY_PLOTTER_OUTPUT     10 // If powered by Li-ion, verbose output to Arduino Serial Monitor is disabled, if connected to ground. This is intended for Arduino Plotter mode.
+// If powered by USB verbose verbose output to Arduino Serial Monitor is disabled, if NOT connected to ground.
 #define PIN_DISCHARGE_TO_LOW        11 // If connected to ground, "cut off is low" is displayed and discharge ends at a lower voltage. E.g. Li-ion discharge ends at 3000 mV instead of 3500 mV
 
 #define USE_BUTTON_0            // Enable code for button 0 at INT0 / pin 2.
 //#define BUTTON_IS_ACTIVE_HIGH   // If you have an active high button (sensor button) attached
 
+bool sOnlyPlotterOutput; // contains the (inverted) value of the pin PIN_ONLY_PLOTTER_OUTPUT
+bool sDischargeToLow; // contains the (inverted) value of the pin PIN_DISCHARGE_TO_LOW
 /*
  * External circuit definitions
  */
@@ -255,6 +261,17 @@ volatile uint8_t sMeasurementState = STATE_SETUP_AND_READ_EEPROM;
 #define STATE_STOP_ATTENTION_PERIOD_MILLIS                  (MILLIS_IN_ONE_SECOND * 600)
 unsigned long sLastStateDetectingBatteryBeepMillis;
 unsigned long sLastStateStoppedBeepMillis;
+
+#define VOLTAGE_LI_ION_LOW_THRESHOLD_MILLIVOLT  3500 // 3.5 volt
+#define VCC_CHECK_PERIOD_SECONDS            (60 * 5L) // check every 5 minutes if VCC is below VOLTAGE_LI_ION_LOW_THRESHOLD_MILLIVOLT
+
+unsigned long sSampleCountForStoring;
+unsigned long sLastMillisOfSample = 0;
+unsigned long sLastMillisOfBatteryDetection = 0;
+unsigned long sLastMillisOfVCCCheck = VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND; // to force first check at startup
+unsigned long sFirstMillisOfESRCheck = 0;
+uint16_t sVCCMillivolt;
+
 /*
  * Current value is in sCurrentLoadResistorHistory[0]. Used for computing and storing the average.
  */
@@ -351,19 +368,6 @@ void switchToStateStopped(bool aWriteToLCD = true);
 void TogglePin(uint8_t aPinNr);
 void LCDClearLine(uint8_t aLineNumber);
 
-#define VCC_CHECK_THRESHOLD_MILLIVOLT     3500 // 3.5 volt
-#define VCC_CHECK_PERIOD_SECONDS            (60 * 5L) // check every 5 minutes if VCC is below VCC_CHECK_THRESHOLD_MILLIVOLT
-
-unsigned long sSampleCountForStoring;
-unsigned long sLastMillisOfSample = 0;
-unsigned long sLastMillisOfBatteryDetection = 0;
-unsigned long sLastMillisOfVCCCheck = VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND; // to force first check at startup
-unsigned long sFirstMillisOfESRCheck = 0;
-uint16_t sVCCMillivolt;
-
-bool sOnlyPlotterOutput; // contains the (inverted) value of the pin PIN_ONLY_PLOTTER_OUTPUT
-bool sDischargeToLow; // contains the (inverted) value of the pin PIN_DISCHARGE_TO_LOW
-
 // Helper macro for getting a macro definition as string
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
@@ -385,15 +389,31 @@ void setup() {
     delay(4000); // To be able to connect Serial monitor after reset or power up and before first print out. Do not wait for an attached Serial Monitor!
 #endif
 
-    sOnlyPlotterOutput = !digitalRead(PIN_ONLY_PLOTTER_OUTPUT);
+    sOnlyPlotterOutput = !digitalRead(PIN_ONLY_PLOTTER_OUTPUT); // default behavior
+    checkForVCCUndervoltage(); // This sets sVCCMillivolt
+    bool tPoweredByUSB = sVCCMillivolt >= VOLTAGE_USB_LOWER_THRESHOLD_MILLIVOLT;
+    if (tPoweredByUSB) {
+        sOnlyPlotterOutput = !sOnlyPlotterOutput; // reversed behavior if powered by USB
+    }
     if (!sOnlyPlotterOutput) {
         // Just to know which program is running on my Arduino
         Serial.println(F("START " __FILE__ "\r\nVersion " VERSION_EXAMPLE " from " __DATE__));
+        /*
+         * Button pin info
+         */
         Serial.print(F("Button pin="));
         Serial.println(INT0_PIN);
-        Serial.println(
-                F(
-                        "Connect pin " STR(PIN_ONLY_PLOTTER_OUTPUT) " to ground, to suppress such prints not suited for Arduino plotter"));
+        Serial.println(F("To suppress such prints not suited for Arduino plotter, "));
+        if (tPoweredByUSB) {
+            Serial.println(F("dis"));
+        }
+        Serial.println(F("connect pin " STR(PIN_ONLY_PLOTTER_OUTPUT) " "));
+        if (tPoweredByUSB) {
+            Serial.println(F("from"));
+        } else {
+            Serial.println(F("to"));
+        }
+        Serial.println(F(" ground"));
     }
 
     // Disable  digital input on all unused ADC channel pins to reduce power consumption
@@ -450,7 +470,6 @@ void setup() {
  * The main loop with a delay of 100 ms
  */
 void loop() {
-    sOnlyPlotterOutput = !digitalRead(PIN_ONLY_PLOTTER_OUTPUT);
 
     if (millis() - sLastMillisOfVCCCheck >= VCC_CHECK_PERIOD_SECONDS * MILLIS_IN_ONE_SECOND) {
         sLastMillisOfVCCCheck = millis();
@@ -460,6 +479,11 @@ void loop() {
             }
             switchToStateStopped(false); // keep LCD message
         }
+    }
+
+    sOnlyPlotterOutput = !digitalRead(PIN_ONLY_PLOTTER_OUTPUT);
+    if (sVCCMillivolt >= VOLTAGE_USB_LOWER_THRESHOLD_MILLIVOLT) {
+        sOnlyPlotterOutput = !sOnlyPlotterOutput; // reversed behavior if powered by USB
     }
 
     if (sMeasurementState == STATE_DETECTING_BATTERY) {
@@ -494,8 +518,8 @@ void loop() {
                 /*
                  * if not connected to USB, check for attention every minute
                  */
-                if (sVCCMillivolt
-                        < 4300&& millis() - sLastStateDetectingBatteryBeepMillis >= STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS) {
+                if (sVCCMillivolt < VOLTAGE_USB_LOWER_THRESHOLD_MILLIVOLT
+                        && millis() - sLastStateDetectingBatteryBeepMillis >= STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS) {
                     sLastStateDetectingBatteryBeepMillis = millis();
                     tone(PIN_TONE, 2200, 40);
                 }
@@ -743,7 +767,7 @@ void printButtonUsageMessage() {
  */
 bool checkForVCCUndervoltage() {
     sVCCMillivolt = getVCCVoltageMillivolt();
-    if (sVCCMillivolt < VCC_CHECK_THRESHOLD_MILLIVOLT) {
+    if (sVCCMillivolt < VOLTAGE_LI_ION_LOW_THRESHOLD_MILLIVOLT) {
 #if defined(USE_LCD)
         myLCD.setCursor(0, 1);
         myLCD.print(F("VCC undervoltage"));

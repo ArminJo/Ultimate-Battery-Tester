@@ -4,13 +4,13 @@
 Program for measuring the ESR (equivalent series resistance) of a battery and printing a graph of the values at discharge.
 
 [![Badge License: GPLv3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](https://www.gnu.org/licenses/gpl-3.0)
- &nbsp; &nbsp; 
+ &nbsp; &nbsp;
 [![Badge Version](https://img.shields.io/github/v/release/ArminJo/Ultimate-Battery-Tester?include_prereleases&color=yellow&logo=DocuSign&logoColor=white)](https://github.com/ArminJo/Ultimate-Battery-Tester/releases/latest)
- &nbsp; &nbsp; 
+ &nbsp; &nbsp;
 [![Badge Commits since latest](https://img.shields.io/github/commits-since/ArminJo/Ultimate-Battery-Tester/latest?color=yellow)](https://github.com/ArminJo/Ultimate-Battery-Tester/commits/master)
- &nbsp; &nbsp; 
+ &nbsp; &nbsp;
 [![Badge Build Status](https://github.com/ArminJo/Ultimate-Battery-Tester/workflows/TestCompile/badge.svg)](https://github.com/ArminJo/Ultimate-Battery-Tester/actions)
- &nbsp; &nbsp; 
+ &nbsp; &nbsp;
 ![Badge Hit Counter](https://visitor-badge.laobi.icu/badge?page_id=ArminJo_Ultimate-Battery-Tester)
 <br/>
 <br/>
@@ -27,7 +27,7 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 - Display of no load voltage to be independence from load (resistor).
 - Easy **continuing of interrupted discharge measurements**.
 - Display of ESR, voltage, current and capacity on a **1602 LCD**.
-- Supports **2 load resistors** for different battery voltages to keep current below 600 mA.
+- Supports **2 different load resistors** for different battery voltages to keep current below 600 mA.
 - Supports battery voltages up to 20 volt (@5V Arduino VCC) and external load resistor e.g. for measuring of battery packs.
 
 <br/>
@@ -46,7 +46,7 @@ The internal resistance is an indicator of the health of the cell. E.g. if a NiM
 ESR values for NiMH can go down to excellent 0.05 &ohm;.<br/>
 Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;
 
-It seems that the **dynamic ESR** measured by devices like **YR1035+** is around half as much as the **?static? ESR** measured by this program. 
+It seems that the **dynamic ESR** measured by devices like **YR1035+** is around half as much as the **?static? ESR** measured by this program.
 This was suprising for me, since I expected only a fixed offset, because of connection imperfections.
 
 Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement. **The displayed voltage is the "no load" voltage**, to be independent of the current load resistor.
@@ -63,7 +63,7 @@ Arduino plot for a **NiMH cell** with 55 m&ohm; ESR.
 # Principle of operation
 The battery type is detected by a fixed mapping of voltage to type in `BatteryTypeInfoArray[]`.
 While the Mosfet is switched on, the voltage at the 2 &ohm; shunt resistor is measured to get the current. The voltage at the battery terminal is measured to get the voltage under load.<br/>
-Every second, the Mosfet is deactivated for 10 ms or 100 ms (depending of battery type), the "no load" voltage at the battery terminal is measured and the Mosfet is switched on again.<br/>
+Every second, the Mosfet is deactivated for 10 ms or 100 ms (depending on battery type), the "no load" voltage at the battery terminal is measured and the Mosfet is switched on again.<br/>
 The internal resistance can now be computed from the difference of the load and the no load voltage and the difference of the currents (measured mA and 0 mA).
 
 Every minute, current data is stored/appended to EEPROM. **The complete data is printed in Arduino Plotter format at each reboot**.
@@ -73,20 +73,23 @@ More details can be found [below](#modes-of-measurement).
 <br/>
 
 # Measurement of battery packs with external load resistor
-Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14 volt require a 5 volt supply of the arduino.<br/>
+Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14.8 volt require a 5 volt supply for the arduino.
+With Li-ion (3.7 V VCC) we can merely measure up to 14.8 V with the existing voltage measurement resistor network.<br/>
 Since the build in load resistor is 12 &ohm;, **the current can go up to 1.4 ampere and the power to 24 watt** and leaving 2.8 watt at the 2 &ohm; shunt resistors.<br/>
-This is too much for the resistors I used for shunt! A solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; aready built in 10 &ohm; one**.
+This is too much for the resistors I used for shunt!<br/>
+A solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; already built in one**.
 This reduces the current to around 500 mA and power to 9 watt leaving 1 watt at the 2 &ohm; shunt resistors.<br/>
-No other adaptions has to be made.
+The voltage must still be measured at the battery terminal, so I use a distinct cable for it, normally connected to the built in load resistors / battery + cable.<br/>
+No other adaption has to be made.
 
 <br/>
 
 # Compile with the Arduino IDE
-Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the UltimateBatteryTester folder. 
+Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the UltimateBatteryTester folder.
 
 # Pictures
 
-| Overview | Top View |
+| Overview with distinct voltage measurement cable (thin red one) to enable additional series resistors for battery packs | Top View |
 |-|-|
 | ![Overview](pictures/Overview.jpg) | ![Top View](pictures/TopView.jpg) |
 | MosFets | Reset and application sensor button |
@@ -166,7 +169,7 @@ Because connecting to the Serial Plotter always resets the tester, we must be ab
 ![InitialESRMeasurement](pictures/InitialESRMeasurement.png)
 
 In the first row the **no load voltage** of the battery, the **30 second countdown** and the **load current** is displayed.
-In the second row the **ESR** and the **difference between the load and no load voltage**, used to compute the ESR, is dispayed.<br/>
+In the second row the **ESR** and the **difference between the load and no load voltage**, used to compute the ESR, is displayed.<br/>
 A value of **59.999 &ohm; indicates overflow** over the maximum value of 65.535 &ohm;.
 
 ## Mode StoreToEEPROM
@@ -199,6 +202,12 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
+### Version 3.2.2
+- If powered by USB plotter pin logic is reversed, i.e. plotter output is enabled if NOT connected to ground.
+
+### Version 3.2.1
+- BUTTON_IS_ACTIVE_HIGH is not default any more
+
 ### Version 3.2.0
 - Cutoff message improved.
 
