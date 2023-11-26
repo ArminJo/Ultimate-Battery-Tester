@@ -45,9 +45,10 @@
 #include "pitches.h"
 
 /*
- * Version 3.2.2 - 11/2023
+ * Version 3.3 - 11/2023
  *    If powered by USB plotter pin logic is reversed, i.e. plotter output is enabled if NOT connected to ground.
  *    Fix bug for appending to compressed data.
+ *    Print also capacity at SwitchOffVoltageMillivolt if SwitchOffVoltageMillivoltLow was used for measurement.
  *    Minor improvements.
  * Version 3.2.1 - 11/2023
  *    BUTTON_IS_ACTIVE_HIGH is not default any more
@@ -73,7 +74,7 @@
  *    Initial version.
  */
 
-#define VERSION_EXAMPLE "3.2"
+#define VERSION_EXAMPLE "3.3"
 //#define DEBUG
 
 /*
@@ -1298,8 +1299,8 @@ void printBatteryValues() {
         myLCD.setCursor(0, 0);
         LCDPrintAsFloat(tVoltageNoLoadMillivolt);
         myLCD.print(F("V "));
-#endif
         // cursor is now at 7, 0
+#endif
 
         if (tMeasurementState == STATE_DETECTING_BATTERY || tMeasurementState == STATE_STOPPED) {
             //Print only voltage for this states
@@ -1333,17 +1334,21 @@ void printBatteryValues() {
             // STATE_STORE_TO_EEPROM here
 #if defined(USE_LCD)
             int tDeltaArrayIndex = ValuesForDeltaStorage.DeltaArrayIndex; // saves 8 bytes of program space
-            if (tDeltaArrayIndex >= 0) {
-                if (tDeltaArrayIndex < 100) {
-                    myLCD.print(' '); // padding space :-)
-                }
-                if (tDeltaArrayIndex < 10) {
-                    myLCD.print(' '); // padding space :-)
-                }
-                myLCD.print(tDeltaArrayIndex);
-            } else {
-                myLCD.print(F("   ")); // we have it once, because we store values (and increment index) after print
+            if (ValuesForDeltaStorage.compressionIsActive) {
+                tDeltaArrayIndex *= 2;
             }
+            // We start with array index -1, which indicates initialization of array :-)
+            if (tDeltaArrayIndex == 0) {
+                myLCD.print(' '); // we have it once, because we store values (and increment index) after print
+            }
+            if (tDeltaArrayIndex < 10) {
+                myLCD.print(' '); // padding space :-)
+            }
+            if (tDeltaArrayIndex < 100) {
+                myLCD.print(' '); // padding space :-)
+            }
+            myLCD.print(tDeltaArrayIndex);
+
 #endif
         }
         // cursor is now at 9, 0
@@ -1418,9 +1423,9 @@ void printBatteryValues() {
         /*
          * Print capacity
          */
-        Serial.print(F(" capacity="));
         sprintf_P(tString, PSTR("%4u"), sBatteryInfo.CapacityMilliampereHour);
         if (!sOnlyPlotterOutput) {
+            Serial.print(F(" capacity="));
             Serial.print(tString);
             Serial.print(F(" mAh"));
         }
@@ -1908,6 +1913,7 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
     uint16_t tVoltage = StartValues.initialDischargingMillivolt;
     uint16_t tMilliampere = StartValues.initialDischargingMilliampere;
     uint16_t tMilliohm = StartValues.initialDischargingMilliohm;
+    uint16_t tCapacityMilliampereHourComputedForHealthyCutoff = 0; // Capacity at healthy cutoff voltage, if measurement was made to low cutoff
     // Required for conversion
     ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt = tVoltage;
     ValuesForDeltaStorage.lastStoredMilliampere = tMilliampere;
@@ -2010,6 +2016,11 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
              * At last, print the caption with values from the end of the measurement cycle to plotter
              */
             printValuesForPlotter(tVoltage, tMilliampere, tMilliohm, (i == tLastNonZeroIndex - 1));
+            if (tVoltage < BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt
+                    && tCapacityMilliampereHourComputedForHealthyCutoff == 0) {
+                // store only once
+                tCapacityMilliampereHourComputedForHealthyCutoff = tCapacityAccumulator / (3600L / NUMBER_OF_SAMPLES_PER_STORAGE);
+            }
         }
     }
 
@@ -2037,6 +2048,19 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
                 Serial.print(tCurrentCapacityMilliampereHourDelta);
                 Serial.println(F(" mAh"));
             }
+        }
+
+        /*
+         * Print capacity at SwitchOffVoltageMillivolt, if it is different from total computed capacity.
+         * I.e. we used SwitchOffVoltageMillivoltLow and therefore have more than one stored voltage value below SwitchOffVoltageMillivolt
+         */
+        if (tCapacityMilliampereHourComputedForHealthyCutoff != 0
+                && tCapacityMilliampereHourComputedForHealthyCutoff != tCurrentCapacityMilliampereHourComputed) {
+            Serial.print(F("Computed capacity at "));
+            Serial.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt);
+            Serial.print(F(" V = "));
+            Serial.print(tCapacityMilliampereHourComputedForHealthyCutoff);
+            Serial.println(F(" mAh"));
         }
 
         // restore capacity accumulator
