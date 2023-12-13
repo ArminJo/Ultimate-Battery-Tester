@@ -142,7 +142,8 @@ A double press during 2 seconds always displays `Stop measurement` for 2 seconds
 ![StartAgain](pictures/StartAgain.png)
 
 ## Mode DetectingBattery
-If no battery is inserted, the Arduino supply voltage (VCC) together with the message "No batt." is displayed in the first row until a battery is inserted.
+If no battery is inserted, the Arduino supply voltage (VCC) together with the message "No batt." is displayed in the first row until a battery is inserted.<br/>
+By pressing the stop button, you can toggle cutoff voltage between high, low and zero (0.1 V).
 
 ![NoBatt](pictures/NoBatt.png)
 
@@ -151,7 +152,6 @@ If a battery is inserted, you see e.g.
 ![LiIoFound](pictures/LiIoFound.png)
 
 for 2 seconds.
-**From now on, the start/stop button is enabled.**<br/>
 Then the messages "dbl press = stop",  and "Press button to append to EEPROM" are displayed for 2 seconds each, but only once after boot.
 
 ![DblPress](pictures/DblPress.png)
@@ -202,8 +202,12 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
-### Version 3.2.2
+### Version 3.3.0
 - If powered by USB plotter pin logic is reversed, i.e. plotter output is enabled if NOT connected to ground.
+- Print also capacity at SwitchOffVoltageMillivolt if SwitchOffVoltageMillivoltLow was used for measurement.
+- In state detecting battery, you can toggle cutoff voltage between high, low and zero (0.1 V) with stop button.
+- Fix bug for appending to compressed data.
+- Minor improvements.
 
 ### Version 3.2.1
 - BUTTON_IS_ACTIVE_HIGH is not default any more
