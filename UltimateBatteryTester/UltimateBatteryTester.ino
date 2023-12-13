@@ -50,6 +50,7 @@
  *    Print also capacity at SwitchOffVoltageMillivolt if SwitchOffVoltageMillivoltLow was used for measurement.
  *    In state detecting battery, you can toggle cutoff voltage between high, low and zero (0.1 V) with stop button.
  *    Fix bug for appending to compressed data.
+ *    Synchronizing of LCD access for button handler, avoiding corrupted display content.
  *    Minor improvements.
  * Version 3.2.1 - 11/2023
  *    BUTTON_IS_ACTIVE_HIGH is not default any more
@@ -113,7 +114,7 @@
 #include "EasyButtonAtInt01.hpp"
 void handleStartStopButtonPress(bool aButtonToggleState);   // The button press callback function
 EasyButton startStopButton0AtPin2(&handleStartStopButtonPress);      // Button is connected to INT0 (pin2)
-
+volatile bool sInPrintBatteryValues;    // To synchronize LCD access for button handler.
 bool sOnlyPlotterOutput;            // contains the (inverted) value of the pin PIN_ONLY_PLOTTER_OUTPUT
 
 #define DISCHARGE_MODE_TO_NORMAL    0
@@ -854,6 +855,12 @@ void handleStartStopButtonPress(bool aButtonToggleState) {
         return;
     }
 
+    // Do not process button  as long as LCD is in use
+    if (sInPrintBatteryValues) {
+        sInPrintBatteryValues = false; // this forces a new call to handleStartStopButtonPress() at the end of PrintBatteryValues()
+        return;
+    }
+
     if (startStopButton0AtPin2.checkForDoublePress(EASY_BUTTON_DOUBLE_PRESS_DEFAULT_MILLIS)) {
         /*
          * Double press detected!
@@ -1330,6 +1337,7 @@ void printBatteryValues() {
                 }
             }
         }
+        sInPrintBatteryValues = true; // disable printing by button handler
 #if defined(USE_LCD)
         myLCD.setCursor(0, 0);
         LCDPrintAsFloatWith3Decimals(tVoltageNoLoadMillivolt);
@@ -1340,140 +1348,149 @@ void printBatteryValues() {
         if (tMeasurementState == STATE_DETECTING_BATTERY || tMeasurementState == STATE_STOPPED) {
 //Print only voltage for this states
             return;
-        }
-
-        /*********************************************************************************
-         * Here we only have state STATE_INITIAL_ESR_MEASUREMENT or STATE_STORE_TO_EEPROM
-         *********************************************************************************/
-
-        /*
-         * Print down counter for STATE_INITIAL_ESR_MEASUREMENT
-         */
-        if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
-            uint8_t tSecondsToGo = STATE_INITIAL_ESR_DURATION_SECONDS - ((millis() - sFirstMillisOfESRCheck) / 1000);
-            if (!sOnlyPlotterOutput) {
-                Serial.print(tSecondsToGo);
-                Serial.print(F(" s ")); // seconds until discharging
-            }
-            if (tSecondsToGo < 10) {
-#if defined(USE_LCD)
-                myLCD.print(' '); // padding space for count
-#endif
-                tone(PIN_TONE, 2000, 40); // costs 1524 bytes code space
-            }
-#if defined(USE_LCD)
-            myLCD.print(tSecondsToGo);
-            myLCD.print(' '); // trailing space for count (just in case mA are > 999)
-#endif
         } else {
+
+            /*********************************************************************************
+             * Here we only have state STATE_INITIAL_ESR_MEASUREMENT or STATE_STORE_TO_EEPROM
+             *********************************************************************************/
+
+            /*
+             * Print down counter for STATE_INITIAL_ESR_MEASUREMENT
+             */
+            if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
+                uint8_t tSecondsToGo = STATE_INITIAL_ESR_DURATION_SECONDS - ((millis() - sFirstMillisOfESRCheck) / 1000);
+                if (!sOnlyPlotterOutput) {
+                    Serial.print(tSecondsToGo);
+                    Serial.print(F(" s ")); // seconds until discharging
+                }
+                if (tSecondsToGo < 10) {
+#if defined(USE_LCD)
+                    myLCD.print(' '); // padding space for count
+#endif
+                    tone(PIN_TONE, 2000, 40); // costs 1524 bytes code space
+                }
+#if defined(USE_LCD)
+                myLCD.print(tSecondsToGo);
+                myLCD.print(' '); // trailing space for count (just in case mA are > 999)
+#endif
+            } else {
 // STATE_STORE_TO_EEPROM here
 #if defined(USE_LCD)
-            int tDeltaArrayIndex = ValuesForDeltaStorage.DeltaArrayIndex; // saves 8 bytes of program space
-            if (ValuesForDeltaStorage.compressionIsActive) {
-                tDeltaArrayIndex *= 2;
-            }
+                int tDeltaArrayIndex = ValuesForDeltaStorage.DeltaArrayIndex; // saves 8 bytes of program space
+                if (ValuesForDeltaStorage.compressionIsActive) {
+                    tDeltaArrayIndex *= 2;
+                }
 // We start with array index -1, which indicates initialization of array :-)
-            if (tDeltaArrayIndex == 0) {
-                myLCD.print(' '); // we have it once, because we store values (and increment index) after print
-            }
-            if (tDeltaArrayIndex < 10) {
-                myLCD.print(' '); // padding space :-)
-            }
-            if (tDeltaArrayIndex < 100) {
-                myLCD.print(' '); // padding space :-)
-            }
-            myLCD.print(tDeltaArrayIndex);
+                if (tDeltaArrayIndex == 0) {
+                    myLCD.print(' '); // we have it once, because we store values (and increment index) after print
+                }
+                if (tDeltaArrayIndex < 10) {
+                    myLCD.print(' '); // padding space :-)
+                }
+                if (tDeltaArrayIndex < 100) {
+                    myLCD.print(' '); // padding space :-)
+                }
+                myLCD.print(tDeltaArrayIndex);
 
 #endif
-        }
+            }
 // cursor is now at 9, 0
 
-        /*
-         * Print milliampere
-         */
-        sprintf_P(tString, PSTR("%4u"), sBatteryInfo.Milliampere);
-        if (!sOnlyPlotterOutput) {
-            Serial.print(tString);
-            Serial.print(F(" mA at "));
-            printMillisValueAsFloat(sCurrentLoadResistorHistory[0]);
-            Serial.print(F(" ohm "));
-        }
+            /*
+             * Print milliampere
+             */
+            sprintf_P(tString, PSTR("%4u"), sBatteryInfo.Milliampere);
+            if (!sOnlyPlotterOutput) {
+                Serial.print(tString);
+                Serial.print(F(" mA at "));
+                printMillisValueAsFloat(sCurrentLoadResistorHistory[0]);
+                Serial.print(F(" ohm "));
+            }
 #if defined(USE_LCD)
-        myLCD.print(tString);
-        myLCD.print(F("mA"));
+            myLCD.print(tString);
+            myLCD.print(F("mA"));
 #endif
-    }
+        }
 
-    /*
-     * End of first row, start of second one
-     */
+        /*
+         * End of first row, start of second one
+         */
 
-    /*
-     * Print current ESR for STATE_INITIAL_ESR_MEASUREMENT
-     * else print average ESR contained in sBatteryInfo.Milliohm
-     */
-    uint32_t tMilliohm;
-    if (tMeasurementState == STATE_SETUP_AND_READ_EEPROM) {
-        tMilliohm = ValuesForDeltaStorage.lastStoredMilliohm;
-    } else if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
-        tMilliohm = sESRHistory[0];
-    } else {
-        tMilliohm = sBatteryInfo.Milliohm;
-    }
-    if (!sOnlyPlotterOutput) {
-        Serial.print(F(" ESR="));
-        if (tMilliohm == __UINT16_MAX__ || (tMeasurementState != STATE_SETUP_AND_READ_EEPROM && sBatteryInfo.Milliampere == 0)) {
-            Serial.print(F("overflow "));
+        /*
+         * Print current ESR for STATE_INITIAL_ESR_MEASUREMENT
+         * else print average ESR contained in sBatteryInfo.Milliohm
+         */
+        uint32_t tMilliohm;
+        if (tMeasurementState == STATE_SETUP_AND_READ_EEPROM) {
+            tMilliohm = ValuesForDeltaStorage.lastStoredMilliohm;
+        } else if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
+            tMilliohm = sESRHistory[0];
         } else {
-            printMillisValueAsFloat(tMilliohm);
-            Serial.print(F(" ohm "));
+            tMilliohm = sBatteryInfo.Milliohm;
         }
-    }
-#if defined(USE_LCD)
-    myLCD.setCursor(0, 1);
-    if (tMilliohm == __UINT16_MAX__ || (tMeasurementState != STATE_SETUP_AND_READ_EEPROM && sBatteryInfo.Milliampere == 0)) {
-        myLCD.print(F("99.999\xF4   ")); // Overflow
-    } else {
-        LCDPrintAsFloatWith3Decimals(tMilliohm);
-        myLCD.print(F("\xF4   ")); // Ohm symbol
-    }
-    myLCD.setCursor(9, 1); // This avoids problems with values >= 10 ohm
-
-#endif
-
-    if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
-        /*
-         * Print voltage at load
-         */
-        uint16_t tESRDeltaMillivolt = sBatteryInfo.sESRDeltaMillivolt; // saves 4 bytes programming space
         if (!sOnlyPlotterOutput) {
-            printMillisValueAsFloat(tESRDeltaMillivolt);
-            Serial.print(F(" V "));
+            Serial.print(F(" ESR="));
+            if (tMilliohm == __UINT16_MAX__
+                    || (tMeasurementState != STATE_SETUP_AND_READ_EEPROM && sBatteryInfo.Milliampere == 0)) {
+                Serial.print(F("overflow "));
+            } else {
+                printMillisValueAsFloat(tMilliohm);
+                Serial.print(F(" ohm "));
+            }
         }
 #if defined(USE_LCD)
-        myLCD.print(' '); // leading space only for voltage
-        LCDPrintAsFloatWith3Decimals(tESRDeltaMillivolt);
-        myLCD.print(F("V"));
+        myLCD.setCursor(0, 1);
+        if (tMilliohm == __UINT16_MAX__ || (tMeasurementState != STATE_SETUP_AND_READ_EEPROM && sBatteryInfo.Milliampere == 0)) {
+            myLCD.print(F("99.999\xF4   ")); // Overflow
+        } else {
+            LCDPrintAsFloatWith3Decimals(tMilliohm);
+            myLCD.print(F("\xF4   ")); // Ohm symbol
+        }
+        myLCD.setCursor(9, 1); // This avoids problems with values >= 10 ohm
+
 #endif
 
-    } else {
-        /*
-         * Print capacity
-         */
-        sprintf_P(tString, PSTR("%4u"), sBatteryInfo.CapacityMilliampereHour);
-        if (!sOnlyPlotterOutput) {
-            Serial.print(F(" capacity="));
-            Serial.print(tString);
-            Serial.print(F(" mAh"));
-        }
+        if (tMeasurementState == STATE_INITIAL_ESR_MEASUREMENT) {
+            /*
+             * Print voltage at load
+             */
+            uint16_t tESRDeltaMillivolt = sBatteryInfo.sESRDeltaMillivolt; // saves 4 bytes programming space
+            if (!sOnlyPlotterOutput) {
+                printMillisValueAsFloat(tESRDeltaMillivolt);
+                Serial.print(F(" V "));
+            }
 #if defined(USE_LCD)
-        myLCD.print(tString);
-        myLCD.print(F("mAh"));
+            myLCD.print(' '); // leading space only for voltage
+            LCDPrintAsFloatWith3Decimals(tESRDeltaMillivolt);
+            myLCD.print(F("V"));
 #endif
+
+        } else {
+            /*
+             * Print capacity
+             */
+            sprintf_P(tString, PSTR("%4u"), sBatteryInfo.CapacityMilliampereHour);
+            if (!sOnlyPlotterOutput) {
+                Serial.print(F(" capacity="));
+                Serial.print(tString);
+                Serial.print(F(" mAh"));
+            }
+#if defined(USE_LCD)
+            myLCD.print(tString);
+            myLCD.print(F("mAh"));
+#endif
+        }
+
+        if (!sOnlyPlotterOutput) {
+            Serial.println();
+        }
     }
 
-    if (!sOnlyPlotterOutput) {
-        Serial.println();
+    // sInPrintBatteryValues is false here, only if button handler was called during this function
+    if (!sInPrintBatteryValues) {
+        handleStartStopButtonPress(false); // delayed call to button handler
+    } else {
+        sInPrintBatteryValues = false; // Enable printing by button handler
     }
 }
 
@@ -2089,17 +2106,19 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
             }
         }
 
-        /*
-         * Print capacity at SwitchOffVoltageMillivolt, if it is different from total computed capacity.
-         * I.e. we used SwitchOffVoltageMillivoltLow and therefore have more than one stored voltage value below SwitchOffVoltageMillivolt
-         */
-        if (tCapacityMilliampereHourComputedForHealthyCutoff != 0
-                && tCapacityMilliampereHourComputedForHealthyCutoff != tCurrentCapacityMilliampereHourComputed) {
-            Serial.print(F("Computed capacity at "));
-            Serial.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt);
-            Serial.print(F(" V = "));
-            Serial.print(tCapacityMilliampereHourComputedForHealthyCutoff);
-            Serial.println(F(" mAh"));
+        if (!sOnlyPlotterOutput) {
+            /*
+             * Print capacity at SwitchOffVoltageMillivolt, if it is different from total computed capacity.
+             * I.e. we used SwitchOffVoltageMillivoltLow and therefore have more than one stored voltage value below SwitchOffVoltageMillivolt
+             */
+            if (tCapacityMilliampereHourComputedForHealthyCutoff != 0
+                    && tCapacityMilliampereHourComputedForHealthyCutoff != tCurrentCapacityMilliampereHourComputed) {
+                Serial.print(F("Computed capacity at "));
+                Serial.print(BatteryTypeInfoArray[sBatteryInfo.TypeIndex].SwitchOffVoltageMillivolt);
+                Serial.print(F(" V = "));
+                Serial.print(tCapacityMilliampereHourComputedForHealthyCutoff);
+                Serial.println(F(" mAh"));
+            }
         }
 
 // restore capacity accumulator
