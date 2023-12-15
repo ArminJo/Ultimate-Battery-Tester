@@ -18,6 +18,10 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 
 </div>
 
+#### If you find this library useful, please give it a star.
+
+&#x1F30E; [Google Translate](https://translate.google.com/translate?sl=en&u=https://github.com/ArminJo/Ultimate-Battery-Tester)
+
 <br/>
 
 # Features
@@ -37,20 +41,23 @@ For Li-Ion the capacity is specified for discharge from **4.2 V to 3.0 V** as in
 or to **2.75 V** as in [ICR18650-26A Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/ICR18650-26A_Samsung.pdf).
 The UltimateBatteryTester has a **cut-off voltage of 3.5 V** for Li-Ion to treat the cells with care.<br/>
 This results in a reduced capacity displayed by approximately the factor 0.85 (1.18), e.g. a Li-Ion cell with nominal capacity of 2150 mAh at 3 V EOD (End Of Discharge) is measured as 1830 mAh at 3.5 V EOD.<br/>
-The cut off voltage can be changed to lower values by connecting pin 11 to ground. See [here](#special-pin-usage).
+The cut off voltage can be changed to low values by connecting pin 11 to ground. See [here](#special-pin-usage).
 
 <br/>
 
 # Battery ESR
 The internal resistance is an indicator of the health of the cell. E.g. if a NiMH cell has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA**, which may be to low for the circuit to work properly.
 ESR values for NiMH can go down to excellent 0.05 &ohm;.<br/>
-Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;
+Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;.
 
 It seems that the **dynamic ESR** measured by devices like **YR1035+** is around half as much as the **?static? ESR** measured by this program.
 This was suprising for me, since I expected only a fixed offset, because of connection imperfections.
 
 Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement. **The displayed voltage is the "no load" voltage**, to be independent of the current load resistor.
 ![2155mAh_53mOhm](pictures/2155mAh_53mOhm.png)
+
+Arduino plot for a **Li-Ion cell** with accidentally setting the cutoff voltage to zero (0.5 volt). The first capacity value is for discharge to cutoff high, the second is the total capacity measured in this graph.
+![Discharge to zero](pictures/QUIXIN_21A21_Li-ion_ToZero.png)
 
 Arduino plot for a **NiMH cell** with 55 m&ohm; ESR.
 ![870mAh_120mOhm](pictures/1275mAh_55mOhm.png)
@@ -73,13 +80,13 @@ More details can be found [below](#modes-of-measurement).
 <br/>
 
 # Measurement of battery packs with external load resistor
-Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14.8 volt require a 5 volt supply for the arduino.
-With Li-ion (3.7 V VCC) we can merely measure up to 14.8 V with the existing voltage measurement resistor network.<br/>
-Since the build in load resistor is 12 &ohm;, **the current can go up to 1.4 ampere and the power to 24 watt** and leaving 2.8 watt at the 2 &ohm; shunt resistors.<br/>
+Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14.8 volt require a 5 volt supply for the arduino internal ADC.
+Given the voltage measurement resistor network from the schematic, with Li-ion (3.7 V VCC) we can merely measure up to 14.8 V.<br/>
+Since the build in load resistor is 12 &ohm;, **the current would go up to 1.4 ampere and the power to 24 watt**, leaving 2.8 watt at the 2 &ohm; shunt resistors.<br/>
 This is too much for the resistors I used for shunt!<br/>
-A solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; already built in one**.
+The solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; already built in one**.
 This reduces the current to around 500 mA and power to 9 watt leaving 1 watt at the 2 &ohm; shunt resistors.<br/>
-The voltage must still be measured at the battery terminal, so I use a distinct cable for it, normally connected to the built in load resistors / battery + cable.<br/>
+The voltage must still be measured at the battery terminal, so I use a distinct cable for voltage measurement, normally connected to the built in load resistors / battery + cable.<br/>
 No other adaption has to be made.
 
 <br/>
@@ -143,7 +150,7 @@ A double press during 2 seconds always displays `Stop measurement` for 2 seconds
 
 ## Mode DetectingBattery
 If no battery is inserted, the Arduino supply voltage (VCC) together with the message "No batt." is displayed in the first row until a battery is inserted.<br/>
-By pressing the stop button, you can toggle cutoff voltage between high, low and zero (0.1 V).
+By pressing the stop button, you can toggle cutoff voltage between high, low and zero (50 mV).
 
 ![NoBatt](pictures/NoBatt.png)
 
@@ -205,7 +212,7 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ### Version 3.3.0
 - If powered by USB plotter pin logic is reversed, i.e. plotter output is enabled if NOT connected to ground.
 - Print also capacity at SwitchOffVoltageMillivolt if SwitchOffVoltageMillivoltLow was used for measurement.
-- In state detecting battery, you can toggle cutoff voltage between high, low and zero (0.1 V) with stop button.
+- In state detecting battery, you can toggle cutoff voltage between high, low and zero (50 mV) with stop button.
 - Fix bug for appending to compressed data.
 - Minor improvements.
 
@@ -234,5 +241,3 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 
 ### Version 1.0.0
 - Initial version with EEPROM storage.
-
-#### If you find this program useful, please give it a star.
