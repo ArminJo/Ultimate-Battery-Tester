@@ -56,7 +56,7 @@ This was suprising for me, since I expected only a fixed offset, because of conn
 Arduino plot for a **Li-Ion cell** with nominal 2150 mAh at 3 volt. This plot is done in 2 measurements, modifying the cutoff voltage to 3.0 volt for the second measurement. **The displayed voltage is the "no load" voltage**, to be independent of the current load resistor.
 ![2155mAh_53mOhm](pictures/2155mAh_53mOhm.png)
 
-Arduino plot for a **Li-Ion cell** with accidentally setting the cutoff voltage to zero (0.5 volt). The first capacity value is for discharge to cutoff high, the second is the total capacity measured in this graph.
+Arduino plot for a **Li-Ion cell** with accidentally setting the cutoff voltage to zero (0.5 volt). The first capacity value is for discharge to cutoff "high", the second is the total capacity measured in this graph.
 ![Discharge to zero](pictures/QUIXIN_21A21_Li-ion_ToZero.png)
 
 Arduino plot for a **NiMH cell** with 55 m&ohm; ESR.
