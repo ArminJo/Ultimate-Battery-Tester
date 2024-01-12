@@ -1732,22 +1732,40 @@ void clearEEPROMTo_FF() {
 }
 
 /*
+ * Returns the real uncompressed delta
+ *  7 / F is interpreted as 16 enabling values of 10 (16 -6) to 21 (16 +5) in 2 steps
+ *  6 / E is interpreted as 5
+ *  5 / D is interpreted as 4
+ *  4 / C is interpreted as 3
+ * -4 / 4 is interpreted as -5
+ * -5 / 3 is interpreted as -6 enabling values of -12 in 2 steps
+ * -6 / 2 is interpreted as -18 enabling values of -13 (-18 +5) to -24 (-18 -6) and -36 in 2 steps
+ * -7 / 1 is interpreted as -30 enabling values of -25 (-30 +5) to -36 (-30 -6) in 2 steps
+ * -8 / 0 is interpreted as -42 enabling values of -37 (-42 +5) to -48 (-42 -6) in 2 steps
+ */
+int8_t getDelta(uint8_t a4BitDelta) {
+    int8_t tDelta;
+    if (a4BitDelta == 15) {
+        tDelta = 16;
+    } else if (a4BitDelta == 2) {
+        tDelta = -18;
+    } else if (a4BitDelta == 1) {
+        tDelta = -30;
+    } else if (a4BitDelta == 0) {
+        tDelta = -42;
+    } else {
+// Here values from 3 to 14 converted to -6 to 5
+        tDelta = a4BitDelta - 9;
+    }
+    return tDelta;
+}
+
+/*
  * compressed delta
  * upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
- *  7 / F is interpreted as 28 enabling values of 22 (28 -6) to 33 (28 +5) in 2 steps
- *  6 / E is interpreted as 16 enabling values of 10 (16 -6) to 21 (16 +5) in 2 steps
- *  5 / D is interpreted as 5
- *  4 / C
- *  2 / A
- *  0 / 8
- * -2 / 6
- * -4 / 4
- * -6 / 2 is interpreted as -6
- * -7 / 1 is interpreted as -18 enabling values of -13 (-18 +5) to -24 (-18 -6) in 2 steps
- * -8 / 0 is interpreted as -30 enabling values of -25 (-30 +5) to -36 (-30 -6) in 2 steps
  * @param aDelta        The delta to process
  * @param *aDeltaTemp   Storage of the upper 4 bit delta, which cannot directly be written to EEPROM
- * @return  clipped aDelta | aDelta which is stored
+ * @return clipped aDelta | aDelta which is stored
  */
 int16_t storeDeltas(int16_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddressToStoreValue) {
     if (!sOnlyPlotterOutput) {
@@ -1771,27 +1789,28 @@ int16_t storeDeltas(int16_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddress
      * Compression here. Clip aDelta to the available range
      */
     int8_t tDelta;
-    if (aDelta >= 22) {
-        aDelta = 28;
-        tDelta = 7;
-    } else if (aDelta >= 10) {
-        aDelta = 16;
-        tDelta = 6;
+    if (aDelta >= 10) {
+        aDelta = 16; // The interpreted value == getDelta(tDelta)
+        tDelta = 7;  // The coded value
     } else if (aDelta >= 5) {
-        aDelta = 5;
-        tDelta = 5;
+        aDelta = 5; // The interpreted value == getDelta(tDelta)
+        tDelta = 6; // The coded value
+
+    } else if (aDelta <= -37) {
+        aDelta = -42; // The interpreted value == getDelta(tDelta)
+        tDelta = -8;  // The coded value
     } else if (aDelta <= -25) {
-        aDelta = -30;
-        tDelta = -8; // -> 0
+        aDelta = -30; // The interpreted value == getDelta(tDelta)
+        tDelta = -7;  // The coded value
     } else if (aDelta <= -13) {
         aDelta = -18;
-        tDelta = -7; // -> 1
+        tDelta = -6; // -> 1
     } else if (aDelta <= -6) {
-        aDelta = -6;
-        tDelta = -6; // -> 2
+        aDelta = -6; // The interpreted value == getDelta(tDelta)
+        tDelta = -5; // The coded value
     } else {
-// Here values from -6 to 5
-        tDelta = aDelta;
+// Here values from -5 to 4
+        tDelta = aDelta + 1;
     }
     /*
      * convert delta to an unsigned value by adding 8 => -8 to 7 -> 0 to F
@@ -2106,29 +2125,6 @@ if (aDoPrintSummary) {
         Serial.print(aMilliohmToPrint);
     }
 #endif
-}
-
-/*
- *  6 is interpreted as 16 enabling values of 10 (16 -6) to 21 (16 +5) in 2 steps
- *  7 is interpreted as 28 enabling values of 22 (28 -6) to 33 (28 +5) in 2 steps
- * -7 is interpreted as -18 enabling values of -13 (-18 +5) to -24 (-18 -6) in 2 steps
- * -8 is interpreted as -30 enabling values of -25 (-30 +5) to -36 (-30 -6) in 2 steps
- */
-int8_t getDelta(uint8_t a4BitDelta) {
-    int8_t tDelta;
-    if (a4BitDelta == 15) {
-        tDelta = 28;
-    } else if (a4BitDelta == 14) {
-        tDelta = 16;
-    } else if (a4BitDelta == 1) {
-        tDelta = -18;
-    } else if (a4BitDelta == 0) {
-        tDelta = -30;
-    } else {
-// Here values from 2 to 13 converted to -6 to 5
-        tDelta = a4BitDelta - 8;
-    }
-    return tDelta;
 }
 
 /*
