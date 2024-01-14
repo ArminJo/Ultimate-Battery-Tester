@@ -247,6 +247,7 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 - Synchronizing of LCD access for button handler, avoiding corrupted display content.
 - Print improvements.
 - Support for storage period of 120 s.
+- Compression improved for rapidly descending voltage.
 
 ### Version 3.2.1
 - BUTTON_IS_ACTIVE_HIGH is not default any more
