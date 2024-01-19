@@ -58,6 +58,7 @@
  *    Compression improved for rapidly descending voltage.
  *    Moving seldom used function of pin 10 to pin A5.
  *    New Logger mode with separate shunt enabled by pin 10.
+ *    Store data in an array of structure instead in 3 arrays.
  *
  * Version 3.2.1 - 11/2023
  *    BUTTON_IS_ACTIVE_HIGH is not default any more
@@ -84,6 +85,7 @@
  */
 
 #define VERSION_EXAMPLE "4.0"
+//#define TRACE
 //#define DEBUG
 
 /*
@@ -326,7 +328,8 @@ uint16_t sCurrentLoadResistorAverage;
 uint16_t sESRHistory[HISTORY_SIZE_FOR_ESR_AVERAGE];
 
 /*
- * EEPROM store
+ * EEPROM store, It seems that EEPROM is allocated top down and in called or referenced sequence
+ * https://arduino.stackexchange.com/questions/93873/how-eemem-maps-the-variables-avr-eeprom-h
  */
 #define FLAG_NO_COMPRESSION     0xFF
 #define FLAG_COMPRESSION        0xFE
@@ -342,18 +345,29 @@ struct EEPROMStartValuesStruct {
 
     uint16_t CapacityMilliampereHour; // is set at end of measurement or by store button
 };
+EEPROMStartValuesStruct StartValues;
+EEMEM EEPROMStartValuesStruct EEPROMStartValues;
+
 #if defined(TEST)
 #define MAX_NUMBER_OF_SAMPLES   9
 #else
 // EEPROM size for values is (1024 - sizeof(EEPROMStartValues)) / 3 = 1012 / 3 = 337.3
 #define MAX_NUMBER_OF_SAMPLES      (E2END - sizeof(EEPROMStartValuesStruct)) / 3 // 337 + 1 since we always have the initial value. 5.6 h / 11.2 h for 1 minute sample rate
 #endif
-EEMEM int8_t sMillivoltDeltaArrayEEPROM[MAX_NUMBER_OF_SAMPLES];
-EEMEM int8_t sMilliampereDeltaArrayEEPROM[MAX_NUMBER_OF_SAMPLES];
-EEMEM int8_t sMilliohmDeltaArrayEEPROM[MAX_NUMBER_OF_SAMPLES];
+union EEPROMDataUnion {
+    struct {
+        int8_t DeltaMillivolt; // one 8 bit delta
+        int8_t DeltaMilliampere;
+        int8_t DeltaESRMilliohm;
+    } uncompressed;
+    struct {
+        uint8_t DeltaMillivolt; // contains 2 4 bit deltas
+        uint8_t DeltaMilliampere;
+        uint8_t DeltaESRMilliohm;
+    } compressed;
+};
+EEMEM EEPROMDataUnion EEPROMDataArray[MAX_NUMBER_OF_SAMPLES];
 
-EEMEM struct EEPROMStartValuesStruct EEPROMStartValues;
-struct EEPROMStartValuesStruct StartValues;
 /*
  * Every compressed array byte contains two 4 bit values
  * The upper 4 bit store the first value, the lower 4 bit store the second value
@@ -363,19 +377,13 @@ struct ValuesForDeltaStorageStruct {
     uint16_t lastStoredMilliampere;
     uint16_t lastStoredVoltageNoLoadMillivolt;
     uint16_t lastStoredMilliohm;
-    uint8_t tempMilliampereDelta;
-    uint8_t tempVoltageDelta;
-    uint8_t tempMilliohmDelta;
+    EEPROMDataUnion tempDeltas;
     bool tempDeltaIsEmpty;
     bool compressionIsActive;
     int DeltaArrayIndex; // The index of the next values to be written. -1 to signal, that start values must be written.
 } ValuesForDeltaStorage;
 
 bool sDoPrintCaption = true; // Value used for (recursive) call to printValuesForPlotter().
-
-uint8_t sVoltageDeltaArray[MAX_NUMBER_OF_SAMPLES]; // only used for readAndProcessEEPROMData(), but using local variable increases code size by 100 bytes
-uint8_t sMilliampereDeltaArray[MAX_NUMBER_OF_SAMPLES];
-uint8_t sMilliohmDeltaArray[MAX_NUMBER_OF_SAMPLES];
 
 void getBatteryVoltageMillivolt();
 bool detectAndPrintBatteryType();
@@ -396,9 +404,9 @@ void printMillisValueAsFloat(uint16_t aValueInMillis);
 void LCDPrintAsFloatWith2Decimals(uint16_t aValueInMillis);
 void LCDPrintAsFloatWith3Decimals(uint16_t aValueInMillis);
 
+void dumpEEPROM(uint8_t *aEEPROMAdress, uint8_t aNumberOf16ByteBlocks);
 void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMilliampere, uint16_t aMilliohm);
 void storeCapacityAndDischargeModeToEEPROM();
-void copyEEPROMDataToRam();
 void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint);
 
 void delayAndCheckForButtonPress();
@@ -553,7 +561,6 @@ void setup() {
     printDischargeMode(); // print actual discharge mode
 
     if (sBatteryInfo.CapacityMilliampereHourValueAtHighCutoff != 0) {
-        char tString[6];
         if (!sOnlyPlotterOutput) {
             if (sBatteryInfo.isStandardCapacity) {
                 Serial.print(F("Standard "));
@@ -573,6 +580,7 @@ void setup() {
             // remove h, l or z, because it is NOT standard capacity and not total capacity
             myLCD.print(' ');
         }
+        char tString[6];
         sprintf_P(tString, PSTR("%5u"), sBatteryInfo.CapacityMilliampereHourValueAtHighCutoff);
         myLCD.print(tString);
         myLCD.print(F("mAh"));
@@ -1183,30 +1191,29 @@ void setLoad(uint8_t aNewLoadState) {
     if (sBatteryInfo.LoadState != aNewLoadState) {
         sBatteryInfo.LoadState = aNewLoadState;
 
-#if defined(DEBUG)
+#if defined(TRACE)
         Serial.print(F("Set load to "));
 #endif
 
         if (aNewLoadState == NO_LOAD) {
-#if defined(DEBUG)
+#if defined(TRACE)
             Serial.println(F("off"));
 #endif
             digitalWrite(LOAD_LOW_PIN, LOW);    // disable 12 ohm load
             digitalWrite(LOAD_HIGH_PIN, LOW);    // disable 3 ohm load
         } else if (aNewLoadState == LOW_LOAD) {
-#if defined(DEBUG)
+#if defined(TRACE)
             Serial.println(F("low"));
 #endif
             digitalWrite(LOAD_LOW_PIN, HIGH);    // enable 12 ohm load
             digitalWrite(LOAD_HIGH_PIN, LOW);    // disable 3 ohm load
         } else {
-#if defined(DEBUG)
+#if defined(TRACE)
             Serial.println(F("high"));
 #endif
             digitalWrite(LOAD_LOW_PIN, LOW);    // disable 12 ohm load
             digitalWrite(LOAD_HIGH_PIN, HIGH);    // enable 3 ohm load
         }
-
     }
 }
 
@@ -1235,11 +1242,12 @@ void getBatteryVoltageMillivolt() {
             Serial.println(F("Switch to 4.4 V range"));
         }
 #endif
+        // no wait, since last reading was same channel, same reference
         tInputVoltageRaw = readADCChannelWithReference(ADC_CHANNEL_VOLTAGE, INTERNAL);
     }
     if (!sVoltageRangeIsLow) {
         if (tInputVoltageRaw < (((0x3F0L * ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE) / ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE) - 0x10)) {
-// switch to lower voltage range by deactivating the range extension resistor at pin A2
+            // switch to lower voltage range by deactivating the range extension resistor at pin A2
             sVoltageRangeIsLow = true;
             pinMode(VOLTAGE_RANGE_EXTENSION_PIN, INPUT);
             digitalWrite(VOLTAGE_RANGE_EXTENSION_PIN, LOW);
@@ -1264,7 +1272,7 @@ void getBatteryVoltageMillivolt() {
 // switch to highest voltage range by using VCC as reference
             uint16_t tReadoutFor1_1Reference = waitAndReadADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT); // 225 at 5 volt VCC
             tInputVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_VOLTAGE, DEFAULT);
-#if defined(DEBUG)
+#if defined(TRACE)
             Serial.print(tInputVoltageRaw);
             Serial.print(F(" / "));
             Serial.println(tReadoutFor1_1Reference);
@@ -1364,7 +1372,7 @@ void getBatteryValues() {
         for (uint_fast8_t i = HISTORY_SIZE_FOR_ESR_AVERAGE - 1; i > 0; --i) {
             if (sESRHistory[i - 1] != 0) {
                 // shift i-1 to i and add to average
-#if defined(DEBUG)
+#if defined(TRACE)
                 Serial.print(sESRHistory[i - 1]);
                 Serial.print('+');
 #endif
@@ -1384,7 +1392,7 @@ void getBatteryValues() {
         tESRAverageAccumulator += sESRHistory[0];
         sBatteryInfo.Milliohm = (tESRAverageAccumulator + (tESRAverageHistoryCounter / 2)) / tESRAverageHistoryCounter;
 
-#if defined(DEBUG)
+#if defined(TRACE)
         Serial.print(sESRHistory[0]);
         Serial.print('/');
         Serial.print(tESRAverageHistoryCounter);
@@ -1558,10 +1566,10 @@ void printStoredData() {
 void printVoltageNoLoadMillivolt() {
     uint16_t tVoltageNoLoadMillivolt = sBatteryInfo.VoltageNoLoadMillivolt; // saves 12 bytes programming space
     if (!sOnlyPlotterOutput) {
-        sLastVoltageNoLoadMillivoltForPrintAndCountdown = tVoltageNoLoadMillivolt;
         printMillisValueAsFloat(tVoltageNoLoadMillivolt);
         Serial.print(F(" V"));
     }
+    sLastVoltageNoLoadMillivoltForPrintAndCountdown = tVoltageNoLoadMillivolt;
 #if defined(USE_LCD)
     myLCD.setCursor(0, 0);
     LCDPrintAsFloatWith3Decimals(tVoltageNoLoadMillivolt);
@@ -1602,6 +1610,7 @@ void printBatteryValues() {
         /***********************************************************************************
          * First row only for state STATE_INITIAL_ESR_MEASUREMENT or STATE_STORE_TO_EEPROM
          ***********************************************************************************/
+        auto tLastVoltageNoLoadMillivoltForPrintAndCountdown = sLastVoltageNoLoadMillivoltForPrintAndCountdown; // is changed by printVoltageNoLoadMillivolt()
         printVoltageNoLoadMillivolt();
         if (!sOnlyPlotterOutput) {
             // 4.094 V,  334 mA at 11.949 ohm, ESR=0.334 ohm, capacity=3501 mAh
@@ -1613,10 +1622,9 @@ void printBatteryValues() {
              * Print down counter for STATE_INITIAL_ESR_MEASUREMENT
              * Count down only if we do not have a rapid voltage decrease
              */
-            if ((sLastVoltageNoLoadMillivoltForPrintAndCountdown - sBatteryInfo.VoltageNoLoadMillivolt) < 3) {
+            if ((tLastVoltageNoLoadMillivoltForPrintAndCountdown - sBatteryInfo.VoltageNoLoadMillivolt) < 3) {
                 sNumbersOfESRChecksToGo--;
             }
-            sLastVoltageNoLoadMillivoltForPrintAndCountdown = sBatteryInfo.VoltageNoLoadMillivolt;
 
             uint8_t tNumbersOfESRChecksToGo = sNumbersOfESRChecksToGo;
             if (!sOnlyPlotterOutput) {
@@ -1780,11 +1788,11 @@ void LCDPrintAsFloatWith2Decimals(uint16_t aValueInMillis) {
 /*
  * Just clear the complete EEPROM
  */
-void clearEEPROMTo_FF() {
+void updateEEPROMTo_FF() {
     if (!sOnlyPlotterOutput) {
         Serial.println(F("Clear EEPROM"));
     }
-    for (int i = 0; i < E2END; ++i) {
+    for (unsigned int i = 0; i < E2END; ++i) {
         eeprom_update_byte((uint8_t*) i, 0xFF);
     }
 }
@@ -1819,28 +1827,28 @@ int8_t getDelta(uint8_t a4BitDelta) {
 }
 
 /*
- * compressed delta
+ * No compression, only clip to 8 bit range
+ */
+int8_t clipDelta(int16_t aDelta) {
+    if (aDelta > __INT8_MAX__) {
+        return __INT8_MAX__;
+    } else if (aDelta < -128) {
+        return -128;
+    }
+    return aDelta;
+}
+
+/*
+ * Compute compressed delta
  * upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
  * @param aDelta        The delta to process
- * @param *aDeltaTemp   Storage of the upper 4 bit delta, which cannot directly be written to EEPROM
+ * @param *aDeltaTemp   Storage for the upper 4 bit delta, which cannot directly be written to EEPROM
  * @return clipped aDelta | aDelta which is stored
  */
-int16_t storeDeltas(int16_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddressToStoreValue) {
+int16_t setDeltas(int16_t aDelta, uint8_t *aDeltaTemp) {
     if (!sOnlyPlotterOutput) {
         Serial.print(' ');
         Serial.print(aDelta);
-    }
-
-    if (!ValuesForDeltaStorage.compressionIsActive) {
-// No compression, only clip to 8 bit range
-        if (aDelta > __INT8_MAX__) {
-            aDelta = __INT8_MAX__;
-        } else if (aDelta < -128) {
-            aDelta = -128;
-        }
-        int8_t tDelta = aDelta;
-        eeprom_write_byte(aEEPROMAddressToStoreValue, tDelta);
-        return aDelta;
     }
 
     /*
@@ -1879,21 +1887,11 @@ int16_t storeDeltas(int16_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddress
     uint8_t tDeltaToStore;
     if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
         tDeltaToStore = tDelta << 4; // Store in upper 4 bit
-        *aDeltaTemp = tDeltaToStore;
     } else {
 // upper 4 bit store the first value (between -8 and 7), lower 4 bit store the second value
         tDeltaToStore = *aDeltaTemp | tDelta;
-        eeprom_write_byte(aEEPROMAddressToStoreValue, tDeltaToStore);
-
-        if (tDeltaToStore != eeprom_read_byte(aEEPROMAddressToStoreValue)) {
-// Yes, I have seen this (starting with index 4 6 times 0xFF for current). Maybe undervoltage while powered by battery.
-            tone(BUZZER_PIN, NOTE_C7, 20);
-            delay(40);
-            tone(BUZZER_PIN, NOTE_C6, 20);
-            delay(40);
-            tone(BUZZER_PIN, NOTE_C7, 20);
-        }
     }
+    *aDeltaTemp = tDeltaToStore;
     if (!sOnlyPlotterOutput) {
         Serial.print(F("->0x"));
         Serial.print(tDeltaToStore, HEX);
@@ -1907,11 +1905,8 @@ int16_t storeDeltas(int16_t aDelta, uint8_t *aDeltaTemp, uint8_t *aEEPROMAddress
  */
 void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMilliampere, uint16_t aMilliohm) {
     if (ValuesForDeltaStorage.DeltaArrayIndex < 0) {
-        if (!sOnlyPlotterOutput) {
-            Serial.println(F("Store initial values to EEPROM"));
-        }
 
-        clearEEPROMTo_FF(); // this may last one or two seconds
+        updateEEPROMTo_FF(); // this may last one or two seconds
 
         /*
          * Initial values
@@ -1928,7 +1923,13 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
         StartValues.DischargeCutoffLevel = sDischargeCutoffLevel;
         StartValues.LoadResistorMilliohm = sCurrentLoadResistorAverage;
         StartValues.CapacityMilliampereHour = 0; // Capacity is written at the end or computed while reading
-        eeprom_write_block(&StartValues, &EEPROMStartValues, sizeof(EEPROMStartValues));
+        eeprom_update_block(&StartValues, &EEPROMStartValues, sizeof(EEPROMStartValues));
+#if defined(DEBUG)
+        dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
+#endif
+        if (!sOnlyPlotterOutput) {
+            Serial.println(F("Store initial values to EEPROM"));
+        }
 
         /*
          * Initially set up structure for delta storage
@@ -1948,27 +1949,50 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
             if ((unsigned int) ValuesForDeltaStorage.DeltaArrayIndex < MAX_NUMBER_OF_SAMPLES) {
 
                 if (!sOnlyPlotterOutput) {
-                    Serial.print(F("Store 8 bit deltas:"));
+                    Serial.println(F("Store 8 bit deltas:"));
                 }
+
                 /*
                  * Append value to delta values array
                  */
                 int16_t tVoltageDelta = aVoltageNoLoadMillivolt - ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt;
-                tVoltageDelta = storeDeltas(tVoltageDelta, &ValuesForDeltaStorage.tempVoltageDelta,
-                        reinterpret_cast<uint8_t*>(&sMillivoltDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+                tVoltageDelta = clipDelta(tVoltageDelta);
                 ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt += tVoltageDelta;
+                ValuesForDeltaStorage.tempDeltas.uncompressed.DeltaMillivolt = tVoltageDelta;
 
                 int16_t tMilliampereDelta = aMilliampere - ValuesForDeltaStorage.lastStoredMilliampere;
-                tMilliampereDelta = storeDeltas(tMilliampereDelta, &ValuesForDeltaStorage.tempMilliampereDelta,
-                        reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+                tMilliampereDelta = clipDelta(tMilliampereDelta);
                 ValuesForDeltaStorage.lastStoredMilliampere += tMilliampereDelta;
+                ValuesForDeltaStorage.tempDeltas.uncompressed.DeltaMilliampere = tMilliampereDelta;
 
                 int16_t tMilliohmDelta = aMilliohm - ValuesForDeltaStorage.lastStoredMilliohm;
-                tMilliohmDelta = storeDeltas(tMilliohmDelta, &ValuesForDeltaStorage.tempMilliohmDelta,
-                        reinterpret_cast<uint8_t*>(&sMilliohmDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+                tMilliohmDelta = clipDelta(tMilliohmDelta);
                 ValuesForDeltaStorage.lastStoredMilliohm += tMilliohmDelta;
+                ValuesForDeltaStorage.tempDeltas.uncompressed.DeltaESRMilliohm = tMilliohmDelta;
+                eeprom_update_block(&ValuesForDeltaStorage.tempDeltas, &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex],
+                        sizeof(ValuesForDeltaStorage.tempDeltas));
 
-                printlnIfNotPlotterOutput();
+#if defined(DEBUG)
+                Serial.print(F("EEPROM values="));
+                Serial.print(ValuesForDeltaStorage.tempDeltas.uncompressed.DeltaMillivolt);
+                Serial.print(F("|0x"));
+                Serial.print(ValuesForDeltaStorage.tempDeltas.compressed.DeltaMillivolt, HEX);
+                Serial.print(' ');
+                Serial.print(ValuesForDeltaStorage.tempDeltas.uncompressed.DeltaMilliampere);
+                Serial.print(F("|0x"));
+                Serial.print(ValuesForDeltaStorage.tempDeltas.compressed.DeltaMilliampere, HEX);
+                Serial.print(' ');
+                Serial.print(ValuesForDeltaStorage.tempDeltas.uncompressed.DeltaESRMilliohm);
+                Serial.print(F("|0x"));
+                Serial.print(ValuesForDeltaStorage.tempDeltas.compressed.DeltaESRMilliohm, HEX);
+//                Serial.print(F(" CapAccu="));
+//                Serial.print(tCapacityAccumulator);
+                Serial.println();
+#endif
+#if defined(TRACE)
+                // dump 2 lines containing the 3 byte data
+                dumpEEPROM((uint8_t*) ((uint16_t) &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex] & 0xFFF0), 2);
+#endif
 
                 ValuesForDeltaStorage.DeltaArrayIndex++; // increase every sample
             } else {
@@ -1996,17 +2020,17 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
                 /*
                  * Clear rest of uncompressed EEPROM values
                  */
-                for (unsigned int i = ValuesForDeltaStorage.DeltaArrayIndex; i < MAX_NUMBER_OF_SAMPLES; ++i) {
-                    eeprom_update_byte(reinterpret_cast<uint8_t*>(&sMillivoltDeltaArrayEEPROM[i]), 0xFF);
-                    eeprom_update_byte(reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM[i]), 0xFF);
-                    eeprom_update_byte(reinterpret_cast<uint8_t*>(&sMilliohmDeltaArrayEEPROM[i]), 0xFF);
+                uint8_t *tEEPROMPointer = reinterpret_cast<uint8_t*>(&EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex]);
+                for (unsigned int i = sizeof(EEPROMDataUnion) * ValuesForDeltaStorage.DeltaArrayIndex;
+                        i < sizeof(EEPROMDataUnion) * MAX_NUMBER_OF_SAMPLES; ++i) {
+                    eeprom_update_byte(tEEPROMPointer++, 0xFF);
                 }
 
                 /*
                  * Set compression flag
                  */
                 StartValues.compressionFlag = FLAG_COMPRESSION;
-                eeprom_write_byte(&EEPROMStartValues.compressionFlag, FLAG_COMPRESSION); // store compression flag in EEPROM
+                eeprom_update_byte(&EEPROMStartValues.compressionFlag, FLAG_COMPRESSION); // store compression flag in EEPROM
                 if (!sOnlyPlotterOutput) {
                     Serial.println(F("Conversion done"));
                     Serial.println();
@@ -2022,40 +2046,73 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
              * Store data in compressed format, 4 bit deltas
              */
             if ((unsigned int) ValuesForDeltaStorage.DeltaArrayIndex < MAX_NUMBER_OF_SAMPLES) {
-                if (!sOnlyPlotterOutput) {
-                    if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
-                        Serial.print(F("Store values to EEPROM compress buffer"));
-                    } else {
-                        Serial.print(F("Store values to EEPROM at index "));
-                        Serial.print(ValuesForDeltaStorage.DeltaArrayIndex);
-                    }
-                }
+
                 /*
                  * Append value to delta values array
                  */
                 int16_t tVoltageDelta = aVoltageNoLoadMillivolt - ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt;
-                tVoltageDelta = storeDeltas(tVoltageDelta, &ValuesForDeltaStorage.tempVoltageDelta,
-                        reinterpret_cast<uint8_t*>(&sMillivoltDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+                tVoltageDelta = setDeltas(tVoltageDelta, &ValuesForDeltaStorage.tempDeltas.compressed.DeltaMillivolt);
                 ValuesForDeltaStorage.lastStoredVoltageNoLoadMillivolt += tVoltageDelta;
 
                 int16_t tMilliampereDelta = aMilliampere - ValuesForDeltaStorage.lastStoredMilliampere;
-                tMilliampereDelta = storeDeltas(tMilliampereDelta, &ValuesForDeltaStorage.tempMilliampereDelta,
-                        reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+                tMilliampereDelta = setDeltas(tMilliampereDelta, &ValuesForDeltaStorage.tempDeltas.compressed.DeltaMilliampere);
                 ValuesForDeltaStorage.lastStoredMilliampere += tMilliampereDelta;
 
                 int16_t tMilliohmDelta = aMilliohm - ValuesForDeltaStorage.lastStoredMilliohm;
-                tMilliohmDelta = storeDeltas(tMilliohmDelta, &ValuesForDeltaStorage.tempMilliohmDelta,
-                        reinterpret_cast<uint8_t*>(&sMilliohmDeltaArrayEEPROM[ValuesForDeltaStorage.DeltaArrayIndex]));
+                tMilliohmDelta = setDeltas(tMilliohmDelta, &ValuesForDeltaStorage.tempDeltas.compressed.DeltaESRMilliohm);
                 ValuesForDeltaStorage.lastStoredMilliohm += tMilliohmDelta;
-
                 printlnIfNotPlotterOutput();
 
-                if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
-                    ValuesForDeltaStorage.tempDeltaIsEmpty = false;
-                } else {
-                    // start two new 4 bit compressed values
-                    ValuesForDeltaStorage.DeltaArrayIndex++; // increase every second sample
-                    ValuesForDeltaStorage.tempDeltaIsEmpty = true;
+                if (!sOnlyPlotterOutput) {
+                    if (ValuesForDeltaStorage.tempDeltaIsEmpty) {
+                        Serial.println(F("store to EEPROM compress buffer"));
+                        ValuesForDeltaStorage.tempDeltaIsEmpty = false;
+
+                    } else {
+                        eeprom_update_block(&ValuesForDeltaStorage.tempDeltas,
+                                &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex], sizeof(ValuesForDeltaStorage.tempDeltas));
+                        Serial.print(F("store to EEPROM at index "));
+                        Serial.print(ValuesForDeltaStorage.DeltaArrayIndex);
+
+                        /*
+                         * control read to verify written data
+                         */
+
+//                        EEPROMDataUnion tEEPROMData;
+//                        eeprom_read_block(&tEEPROMData, &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex],
+//                                sizeof(tEEPROMData));
+//                        if (ValuesForDeltaStorage.tempDeltas.DeltaMillivolt != tEEPROMData.DeltaMillivolt
+//                                || ValuesForDeltaStorage.tempDeltas.DeltaMilliampere != tEEPROMData.DeltaMilliampere
+//                                || ValuesForDeltaStorage.tempDeltas.DeltaESRMilliohm != tEEPROMData.DeltaESRMilliohm) {
+//                            // Yes, I have seen this (starting with index 4 6 times 0xFF for current). Maybe undervoltage while powered by battery.
+//                            tone(BUZZER_PIN, NOTE_C7, 20);
+//                            delay(40);
+//                            tone(BUZZER_PIN, NOTE_C6, 20);
+//                            delay(40);
+//                            tone(BUZZER_PIN, NOTE_C7, 20);
+//                        }
+                        // requires 2 bytes less program space compared with 3 fixed comparisons above
+//                        uint8_t * tEEPROMPointer = reinterpret_cast<uint8_t*>(&EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex]);
+                        uint8_t *tRAMPointer = reinterpret_cast<uint8_t*>(&ValuesForDeltaStorage.tempDeltas);
+                        for (uint16_t i = reinterpret_cast<uint16_t>(&EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex]);
+                                i
+                                        < reinterpret_cast<uint16_t>(&EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex])
+                                                + sizeof(EEPROMDataUnion); ++i) {
+                            if (eeprom_read_byte((uint8_t*) i) != *tRAMPointer++) {
+                                // Yes, I have seen this (starting with index 4 6 times 0xFF for current). Maybe undervoltage while powered by battery.
+                                tone(BUZZER_PIN, NOTE_C7, 20);
+                                delay(40);
+                                tone(BUZZER_PIN, NOTE_C6, 20);
+                                delay(40);
+                                tone(BUZZER_PIN, NOTE_C7, 20);
+                                break;
+                            }
+                        }
+
+                        // start two new 4 bit compressed values
+                        ValuesForDeltaStorage.DeltaArrayIndex++; // increase every second sample
+                        ValuesForDeltaStorage.tempDeltaIsEmpty = true;
+                    }
                 }
             }
         }
@@ -2066,9 +2123,23 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
 
 }
 
+void dumpEEPROM(uint8_t *aEEPROMAdress, uint8_t aNumberOf16ByteBlocks) {
+    for (uint8_t i = 0; i < aNumberOf16ByteBlocks; ++i) {
+        Serial.print(F("0x"));
+        Serial.print((uint16_t) aEEPROMAdress, HEX);
+        Serial.print(F(": "));
+        for (uint8_t j = 0; j < 16; ++j) {
+            uint8_t tEEPROMValue = eeprom_read_byte(aEEPROMAdress++);
+            Serial.print(F(" 0x"));
+            Serial.print(tEEPROMValue, HEX);
+        }
+        Serial.println();
+    }
+}
+
 void storeCapacityAndDischargeModeToEEPROM() {
-    eeprom_write_word(&EEPROMStartValues.CapacityMilliampereHour, sBatteryInfo.CapacityMilliampereHour);
-    eeprom_write_byte(&EEPROMStartValues.DischargeCutoffLevel, sDischargeCutoffLevel);
+    eeprom_update_word(&EEPROMStartValues.CapacityMilliampereHour, sBatteryInfo.CapacityMilliampereHour);
+    eeprom_update_byte(&EEPROMStartValues.DischargeCutoffLevel, sDischargeCutoffLevel);
     if (!sOnlyPlotterOutput) {
 // Print should be done after checkForDoublePress() in order to not disturb the double press detection
         Serial.print(F("Discharge mode "));
@@ -2082,6 +2153,9 @@ void storeCapacityAndDischargeModeToEEPROM() {
     myLCD.print(F("Capacity stored "));
     delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
+#if defined(DEBUG)
+    dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
+#endif
 }
 
 /*
@@ -2092,39 +2166,39 @@ void storeCapacityAndDischargeModeToEEPROM() {
 void printValuesForPlotter(uint16_t aVoltageToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
         bool aDoPrintCaption) {
 #if defined(ARDUINO_2_0_PLOTTER_FORMAT)
-Serial.print(F("Voltage:"));
-Serial.print(aVoltageToPrint);
-Serial.print(F(" Current:"));
-Serial.print(aMilliampereToPrint);
-Serial.print(F(" ESR:"));
-Serial.print(aMilliohmToPrint);
-if (aDoPrintSummary) {
-    // Print updated plotter caption
-    Serial.print(F(" Voltage="));
-    printMillisValueAsFloat(StartValues.initialDischargingMillivolt);
-    Serial.print(F("V->"));
-    printMillisValueAsFloat(aVoltageToPrint);
-    Serial.print(F("V__Current="));
-    Serial.print(StartValues.initialDischargingMilliampere);
-    Serial.print(F("mA->"));
-    Serial.print(aMilliampereToPrint);
-    Serial.print(F("mA__ESR="));
-    Serial.print(StartValues.initialDischargingMilliohm);
-    Serial.print(F("mohm->"));
-    Serial.print(aMilliohmToPrint);
-    Serial.print(F("mohm___LoadResistor="));
-    printMillisValueAsFloat(StartValues.LoadResistorMilliohm);
-    Serial.print(F("ohm__Capacity="));
-    Serial.print(StartValues.CapacityMilliampereHour);
-    Serial.print(F("mAh__Duration="));
-    // We have 2 4bit values per storage byte
-    uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex)
-    * (2 * NUMBER_OF_SAMPLES_PER_STORAGE)/ SECONDS_IN_ONE_MINUTE;
-    Serial.print(tDurationMinutes / 60);
-    Serial.print(F("h_"));
-    Serial.print(tDurationMinutes % 60);
-    Serial.print(F("min:aVoltageToPrint"));
-}
+            Serial.print(F("Voltage:"));
+            Serial.print(aVoltageToPrint);
+            Serial.print(F(" Current:"));
+            Serial.print(aMilliampereToPrint);
+            Serial.print(F(" ESR:"));
+            Serial.print(aMilliohmToPrint);
+            if (aDoPrintSummary) {
+                // Print updated plotter caption
+                Serial.print(F(" Voltage="));
+                printMillisValueAsFloat(StartValues.initialDischargingMillivolt);
+                Serial.print(F("V->"));
+                printMillisValueAsFloat(aVoltageToPrint);
+                Serial.print(F("V__Current="));
+                Serial.print(StartValues.initialDischargingMilliampere);
+                Serial.print(F("mA->"));
+                Serial.print(aMilliampereToPrint);
+                Serial.print(F("mA__ESR="));
+                Serial.print(StartValues.initialDischargingMilliohm);
+                Serial.print(F("mohm->"));
+                Serial.print(aMilliohmToPrint);
+                Serial.print(F("mohm___LoadResistor="));
+                printMillisValueAsFloat(StartValues.LoadResistorMilliohm);
+                Serial.print(F("ohm__Capacity="));
+                Serial.print(StartValues.CapacityMilliampereHour);
+                Serial.print(F("mAh__Duration="));
+                // We have 2 4bit values per storage byte
+                uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex)
+                * (2 * NUMBER_OF_SAMPLES_PER_STORAGE)/ SECONDS_IN_ONE_MINUTE;
+                Serial.print(tDurationMinutes / 60);
+                Serial.print(F("h_"));
+                Serial.print(tDurationMinutes % 60);
+                Serial.print(F("min:aVoltageToPrint"));
+            }
 #else
     if (aDoPrintCaption) {
 // Print updated plotter caption
@@ -2184,45 +2258,31 @@ if (aDoPrintSummary) {
 #endif
 }
 
-/*
- * Copy EEPROM delta and start values to RAM
- */
-void copyEEPROMDataToRam() {
-    eeprom_read_block(sVoltageDeltaArray, reinterpret_cast<uint8_t*>(&sMillivoltDeltaArrayEEPROM),
-    MAX_NUMBER_OF_SAMPLES);
-    eeprom_read_block(sMilliampereDeltaArray, reinterpret_cast<uint8_t*>(&sMilliampereDeltaArrayEEPROM),
-    MAX_NUMBER_OF_SAMPLES);
-    eeprom_read_block(sMilliohmDeltaArray, reinterpret_cast<uint8_t*>(&sMilliohmDeltaArrayEEPROM),
-    MAX_NUMBER_OF_SAMPLES);
-
-    /*
-     * Read start values data for later printing
-     */
-    eeprom_read_block(&StartValues, &EEPROMStartValues, sizeof(EEPROMStartValues));
-}
-
 #define CAPACITY_WAITING_FOR_NOMINAL_FULL_VOLTAGE            0
 #define CAPACITY_STARTED                1       // Current voltage is below or equal NominalFullVoltageMillivolt and higher or equal SwitchOffVoltageMillivoltHigh
 #define CAPACITY_COMPLETED              2       // Current voltage is below SwitchOffVoltageMillivoltHigh
 /*
- * Reads EEPROM delta values arrays
+ * Reads EEPROM delta values array
  * - print data for plotter and compute ESR on the fly from voltage, current and load resistor
  * - compute capacity from current (if defined SUPPORT_CAPACITY_RESTORE)
  * - restore battery type and capacity accumulator as well as mAh
  * - Capacity is stored in sBatteryInfo.CapacityMilliampereHour and sBatteryInfo.CapacityAccumulator
  */
 void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
+    EEPROMDataUnion tEEPROMData;
     /*
-     * First copy EEPROM delta and start values to RAM for later printing
+     * First copy EEPROM start values to RAM
      */
-    copyEEPROMDataToRam();
+    eeprom_read_block(&StartValues, &EEPROMStartValues, sizeof(EEPROMStartValues));
+
     bool tIsCompressed = (StartValues.compressionFlag != FLAG_NO_COMPRESSION);
 
 // search last non 0xFF (not cleared) value
     int tLastNonZeroIndex;
     for (tLastNonZeroIndex = (MAX_NUMBER_OF_SAMPLES - 1); tLastNonZeroIndex >= 0; --tLastNonZeroIndex) {
-        if (sVoltageDeltaArray[tLastNonZeroIndex] != 0xFF || sMilliampereDeltaArray[tLastNonZeroIndex] != 0xFF
-                || sMilliohmDeltaArray[tLastNonZeroIndex] != 0xFF) {
+        eeprom_read_block(&tEEPROMData, &EEPROMDataArray[tLastNonZeroIndex], sizeof(tEEPROMData));
+        if (tEEPROMData.compressed.DeltaMillivolt != 0xFF || tEEPROMData.compressed.DeltaMilliampere != 0xFF
+                || tEEPROMData.compressed.DeltaESRMilliohm != 0xFF) {
             break;
         }
     }
@@ -2289,14 +2349,15 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
 
 // DeltaArrayIndex can be from 0 to MAX_NUMBER_OF_SAMPLES
     for (int i = 0; i < tLastNonZeroIndex; ++i) {
+        eeprom_read_block(&tEEPROMData, &EEPROMDataArray[i], sizeof(tEEPROMData));
 
         if (!tIsCompressed) {
             /***************
              * Uncompressed
              ***************/
-            tVoltage += (int8_t) sVoltageDeltaArray[i];
-            tMilliampere += (int8_t) sMilliampereDeltaArray[i];
-            tMilliohm += (int8_t) sMilliohmDeltaArray[i];
+            tVoltage += tEEPROMData.uncompressed.DeltaMillivolt;
+            tMilliampere += tEEPROMData.uncompressed.DeltaMilliampere;
+            tMilliohm += tEEPROMData.uncompressed.DeltaESRMilliohm;
             if (aDoConvertInsteadOfPrint) {
                 /*
                  * Convert uncompressed values here
@@ -2307,17 +2368,21 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
             }
             tCapacityAccumulator += tMilliampere; // putting this into printValuesForPlotter() increases program size
 #if defined(DEBUG)
-            if (!sOnlyPlotterOutput) {
-                Serial.print(F("EEPROM values="));
-                Serial.print((int8_t) sVoltageDeltaArray[i]);
-                Serial.print(' ');
-                Serial.print((int8_t) sMilliampereDeltaArray[i]);
-                Serial.print(' ');
-                Serial.print((int8_t) sMilliohmDeltaArray[i]);
+            Serial.print(F("EEPROM values="));
+            Serial.print(tEEPROMData.uncompressed.DeltaMillivolt);
+            Serial.print(F("|0x"));
+            Serial.print(tEEPROMData.compressed.DeltaMillivolt, HEX);
+            Serial.print(' ');
+            Serial.print(tEEPROMData.uncompressed.DeltaMilliampere);
+            Serial.print(F("|0x"));
+            Serial.print(tEEPROMData.compressed.DeltaMilliampere, HEX);
+            Serial.print(' ');
+            Serial.print(tEEPROMData.uncompressed.DeltaESRMilliohm);
+            Serial.print(F("|0x"));
+            Serial.print(tEEPROMData.compressed.DeltaESRMilliohm, HEX);
 //                Serial.print(F(" CapAccu="));
 //                Serial.print(tCapacityAccumulator);
-                Serial.println();
-            }
+            Serial.println();
 #endif
 
         } else {
@@ -2327,13 +2392,13 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
             /*
              * Process first part of compressed data
              */
-            uint8_t t4BitVoltageDelta = sVoltageDeltaArray[i];
+            uint8_t t4BitVoltageDelta = tEEPROMData.compressed.DeltaMillivolt;
             tVoltage += getDelta(t4BitVoltageDelta >> 4);
 
-            uint8_t t4BitMilliampereDelta = sMilliampereDeltaArray[i];
+            uint8_t t4BitMilliampereDelta = tEEPROMData.compressed.DeltaMilliampere;
             tMilliampere += getDelta(t4BitMilliampereDelta >> 4);
 
-            uint8_t t4BitMilliohmDelta = sMilliohmDeltaArray[i];
+            uint8_t t4BitMilliohmDelta = tEEPROMData.compressed.DeltaESRMilliohm;
             tMilliohm += getDelta(t4BitMilliohmDelta >> 4);
 
             tCapacityAccumulator += tMilliampere; // putting this into printValuesForPlotter() increases program size
@@ -2364,17 +2429,16 @@ void readAndProcessEEPROMData(bool aDoConvertInsteadOfPrint) {
              */
             tCapacityAccumulator += tMilliampere;
 #if defined(DEBUG)
-            if (!sOnlyPlotterOutput) {
-                Serial.print(F("EEPROM values=0x"));
-                Serial.print(sVoltageDeltaArray[i], HEX);
-                Serial.print(F(" 0x"));
-                Serial.print(sMilliampereDeltaArray[i], HEX);
-                Serial.print(F(" 0x"));
-                Serial.print(sMilliohmDeltaArray[i], HEX);
-//                Serial.print(F(" CapAccu="));
-//                Serial.print(tCapacityAccumulator);
-                Serial.println();
-            }
+            Serial.print(F("EEPROM values=0x"));
+            Serial.print(tEEPROMData.compressed.DeltaMillivolt, HEX);
+            Serial.print(F(" 0x"));
+            Serial.print(tEEPROMData.compressed.DeltaMilliampere, HEX);
+            Serial.print(F(" 0x"));
+            Serial.print(tEEPROMData.compressed.DeltaESRMilliohm, HEX);
+//            Serial.print(F(" CapAccu="));
+//            Serial.print(tCapacityAccumulator);
+            Serial.println();
+
 #endif
         }
 
@@ -2519,6 +2583,6 @@ void LCDClearLine(uint8_t aLineNumber) {
     myLCD.print("                    ");
     myLCD.setCursor(0, aLineNumber);
 #else
-    (void) aLineNumber;
+            (void) aLineNumber;
 #endif
 }

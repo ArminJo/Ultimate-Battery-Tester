@@ -248,6 +248,9 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 - Print improvements.
 - Support for storage period of 120 s.
 - Compression improved for rapidly descending voltage.
+- Moving seldom used function of pin 10 to pin A5.
+- New Logger mode with separate shunt enabled by pin 10.
+- Store data in an array of structure instead in 3 arrays
 
 ### Version 3.2.1
 - BUTTON_IS_ACTIVE_HIGH is not default any more
