@@ -2273,98 +2273,99 @@ void printMeasurementValuesLCD() {
     /**********************
      * Start of second row
      **********************/
-    /*
-     * STATE_SETUP_AND_READ_EEPROM + STATE_STORE_TO_EEPROM: "0.061o l 1200mAh" using sMeasurementInfo.ESRMilliohm
-     * STATE_INITIAL_SAMPLES:                               "0.061o l  0.128V" using current ESR from sESRHistory[0]
-     */
-
-    uint32_t tMilliohm; // Compiler complains about initialize variable, which is wrong
-    if (sOnlyLoggerFunctionality) {
-        if (!sOnlyPlotterOutput) {
-            Serial.print(F(" Min="));
-            printMillisValueAsFloat(sMeasurementInfo.Voltages.Logger.MinimumMillivolt);
-            Serial.print(F(" V, Avg="));
-            printMillisValueAsFloat(sMeasurementInfo.Voltages.Logger.AverageMillivolt);
-            Serial.print(F(" V, Max="));
-            printMillisValueAsFloat(sMeasurementInfo.Voltages.Logger.MaximumMillivolt);
-            Serial.print(F(" V "));
-        }
-    } else {
+    if (sMeasurementState != STATE_DETECTING_BATTERY_OR_VOLTAGE) {
         /*
-         * Print ESR
+         * STATE_SETUP_AND_READ_EEPROM + STATE_STORE_TO_EEPROM: "0.061o l 1200mAh" using sMeasurementInfo.ESRMilliohm
+         * STATE_INITIAL_SAMPLES:                               "0.061o l  0.128V" using current ESR from sESRHistory[0]
          */
-        if (tMeasurementState == STATE_INITIAL_SAMPLES && sMeasurementInfo.Milliampere != 0) {
-            tMilliohm = sESRHistory[0];
-        } else {
-            tMilliohm = sMeasurementInfo.ESRMilliohm;
-        }
-
-        if (!sOnlyPlotterOutput) {
-            Serial.print(F("ESR="));
-            if (tMilliohm == __UINT16_MAX__) {
-                /*
-                 * No recent current measurement -> show old ESR
-                 */
-                Serial.print(F("overflow, "));
-            } else {
-                printMillisValueAsFloat(tMilliohm);
-                Serial.print(F(" ohm, "));
-            }
-        }
-#if defined(USE_LCD)
-        myLCD.setCursor(0, 1);
+        uint32_t tMilliohm; // Compiler complains about initialize variable, which is wrong
         if (sOnlyLoggerFunctionality) {
-            LCDPrintAsFloatWith3Decimals(sMeasurementInfo.Voltages.Logger.MaximumMillivolt);
-            myLCD.print(F("V"));
-        } else {
-            if (tMilliohm == __UINT16_MAX__) {
-                myLCD.print(F("99.99")); // Overflow
-            } else if (tMilliohm < 10000) {
-                myLCD.print(((float) (tMilliohm)) / 1000, 3);
-            } else {
-                myLCD.print(((float) (tMilliohm)) / 1000, 2);
-            }
-            myLCD.print(F("\xF4 ")); // Ohm symbol
-        }
-#endif
-    }
-
-    /*
-     * Print cut off level
-     */
-#if defined(USE_LCD)
-    myLCD.setCursor(7, 1); // This avoids problems with values >= 10 ohm
-    myLCD.print(getCutoffLevelAsCharacter());
-#endif
-
-    /*
-     * Print voltage difference or capacity
-     */
-    if (tMeasurementState == STATE_INITIAL_SAMPLES) {
-        if (!sOnlyLoggerFunctionality) {
-            /*
-             * Print voltage difference between no load and load used for ESR computation
-             */
-            uint16_t tESRDeltaMillivolt = sMeasurementInfo.sESRDeltaMillivolt; // saves 4 bytes programming space
             if (!sOnlyPlotterOutput) {
-                printMillisValueAsFloat(tESRDeltaMillivolt);
+                Serial.print(F(" Min="));
+                printMillisValueAsFloat(sMeasurementInfo.Voltages.Logger.MinimumMillivolt);
+                Serial.print(F(" V, Avg="));
+                printMillisValueAsFloat(sMeasurementInfo.Voltages.Logger.AverageMillivolt);
+                Serial.print(F(" V, Max="));
+                printMillisValueAsFloat(sMeasurementInfo.Voltages.Logger.MaximumMillivolt);
                 Serial.print(F(" V "));
             }
+        } else {
+            /*
+             * Print ESR
+             */
+            if (tMeasurementState == STATE_INITIAL_SAMPLES && sMeasurementInfo.Milliampere != 0) {
+                tMilliohm = sESRHistory[0];
+            } else {
+                tMilliohm = sMeasurementInfo.ESRMilliohm;
+            }
+
+            if (!sOnlyPlotterOutput) {
+                Serial.print(F("ESR="));
+                if (tMilliohm == __UINT16_MAX__) {
+                    /*
+                     * No recent current measurement -> show old ESR
+                     */
+                    Serial.print(F("overflow, "));
+                } else {
+                    printMillisValueAsFloat(tMilliohm);
+                    Serial.print(F(" ohm, "));
+                }
+            }
 #if defined(USE_LCD)
-            myLCD.print(F("  ")); // leading spaces only for voltage
-            LCDPrintAsFloatWith3Decimals(tESRDeltaMillivolt);
-            myLCD.print(F("V"));
+            myLCD.setCursor(0, 1);
+            if (sOnlyLoggerFunctionality) {
+                LCDPrintAsFloatWith3Decimals(sMeasurementInfo.Voltages.Logger.MaximumMillivolt);
+                myLCD.print(F("V"));
+            } else {
+                if (tMilliohm == __UINT16_MAX__) {
+                    myLCD.print(F("99.99")); // Overflow
+                } else if (tMilliohm < 10000) {
+                    myLCD.print(((float) (tMilliohm)) / 1000, 3);
+                } else {
+                    myLCD.print(((float) (tMilliohm)) / 1000, 2);
+                }
+                myLCD.print(F("\xF4 ")); // Ohm symbol
+            }
 #endif
         }
-    } else {
 
         /*
-         * Print capacity
+         * Print cut off level
          */
 #if defined(USE_LCD)
-        myLCD.setCursor(8, 1); // This avoids problems with values >= 10 ohm
+        myLCD.setCursor(7, 1); // This avoids problems with values >= 10 ohm
+        myLCD.print(getCutoffLevelAsCharacter());
 #endif
-        printCapacity5Digits();
+
+        /*
+         * Print voltage difference or capacity
+         */
+        if (tMeasurementState == STATE_INITIAL_SAMPLES) {
+            if (!sOnlyLoggerFunctionality) {
+                /*
+                 * Print voltage difference between no load and load used for ESR computation
+                 */
+                uint16_t tESRDeltaMillivolt = sMeasurementInfo.sESRDeltaMillivolt; // saves 4 bytes programming space
+                if (!sOnlyPlotterOutput) {
+                    printMillisValueAsFloat(tESRDeltaMillivolt);
+                    Serial.print(F(" V "));
+                }
+#if defined(USE_LCD)
+                myLCD.print(F("  ")); // leading spaces only for voltage
+                LCDPrintAsFloatWith3Decimals(tESRDeltaMillivolt);
+                myLCD.print(F("V"));
+#endif
+            }
+        } else {
+
+            /*
+             * Print capacity
+             */
+#if defined(USE_LCD)
+            myLCD.setCursor(8, 1); // This avoids problems with values >= 10 ohm
+#endif
+            printCapacity5Digits();
+        }
     }
 
     /*
