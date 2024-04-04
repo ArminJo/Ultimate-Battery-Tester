@@ -98,7 +98,8 @@
 
 /*
  * Pin and ADC definitions
- * Start/Stop button is connected to INT0 pin 2
+ *
+ * Pin 2 / INT0 is used for Start/Stop button
  * Pin 3 to 8 are used for parallel LCD connection
  */
 #define ADC_CHANNEL_VOLTAGE          0 // A0 for voltage measurement
@@ -106,14 +107,14 @@
 #define VOLTAGE_RANGE_EXTENSION_PIN A2 // This pin is low to extend the voltage range from 2.2 volt to 4.4 volt
 #define LOAD_HIGH_PIN               A3 // This pin is high to switch on the high load (3 ohm)
 // A4 + A5, the hardware I2C pins on Arduino, are used for Serial LCD
-#define ONLY_PLOTTER_OUTPUT_PIN     A4 // If powered by Li-ion, verbose output to Arduino Serial Monitor is disabled, if connected to ground. This is intended for Arduino Plotter mode.
-#define ADC_CHANNEL_LOGGER_CURRENT   5 // A5 for current measurement for Logger
-#define LOAD_LOW_PIN                12 // This pin is high to switch on the low load (10 ohm). A4 is occupied by I2C for serial LCD display.
-#define BUZZER_PIN                   9
+#define ADC_CHANNEL_LOGGER_CURRENT   4 // A4 for current measurement for Logger
+#define BUZZER_PIN                  A5
 // Mode pins
+#define ONLY_PLOTTER_OUTPUT_PIN      9 // If powered by Li-ion, verbose output to Arduino Serial Monitor is disabled, if connected to ground. This is intended for Arduino Plotter mode.
 #define ONLY_LOGGER_MODE_PIN        10 // If connected to ground, current is measured at the shunt at A4 and voltage still at A0.
 // If powered by USB verbose verbose output to Arduino Serial Monitor is disabled, if NOT connected to ground.
 #define CUTOFF_LEVEL_PIN            11 // If connected to ground, "cut off is low" is displayed and discharge ends at a lower voltage. E.g. Li-ion discharge ends at 3000 mV instead of 3500 mV
+#define LOAD_LOW_PIN                12 // This pin is high to switch on the low load (10 ohm). A4 is occupied by I2C for serial LCD display.
 
 /*
  * Imports and definitions for start/stop button at pin 2
@@ -508,7 +509,8 @@ void setup() {
     digitalWrite(VOLTAGE_RANGE_EXTENSION_PIN, LOW);
 
     Serial.begin(115200);
-#if defined(__AVR_ATmega32U4__) || defined(SERIAL_PORT_USBVIRTUAL) || defined(SERIAL_USB) /*stm32duino*/|| defined(USBCON) /*STM32_stm32*/|| defined(SERIALUSB_PID) || defined(ARDUINO_attiny3217)
+#if defined(__AVR_ATmega32U4__) || defined(SERIAL_PORT_USBVIRTUAL) || defined(SERIAL_USB) /*stm32duino*/|| defined(USBCON) /*STM32_stm32*/ \
+    || defined(SERIALUSB_PID)  || defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_attiny3217)
     delay(4000); // To be able to connect Serial monitor after reset or power up and before first print out. Do not wait for an attached Serial Monitor!
 #endif
 
