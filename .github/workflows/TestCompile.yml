@@ -46,6 +46,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@master
 
+      - name: Checkout new BlueDisplay
+        uses: actions/checkout@master
+        with:
+          repository: ArminJo/Arduino-BlueDisplay
+          ref: master
+          path: CustomBlueDisplay # must contain string "Custom"
+          # No need to put this custom library in the required-libraries list
+
       - name: Compile all examples
         uses: ArminJo/arduino-test-compile@master
         with:

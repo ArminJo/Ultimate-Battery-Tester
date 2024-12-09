@@ -74,7 +74,7 @@ Plot for a **Li-Ion cell** with accidentally setting the cutoff voltage to zero 
 Plot for a **NiMH cell** with 55 m&ohm; ESR.
 ![870mAh_120mOhm](pictures/1275mAh_55mOhm.png)
 
-Plot of a NiMh battery sold as 4/5AA 1800mAh Ni-Mh proving only 960 mAh.
+Plot of a NiMh battery sold as 4/5AA 1800mAh Ni-Mh showing only 960 mAh.
  ![1800mAh](pictures/1800NiMhBattery.png)
  
 <br/>
