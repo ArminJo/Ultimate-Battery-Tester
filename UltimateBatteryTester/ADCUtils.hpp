@@ -28,7 +28,7 @@
 #include "ADCUtils.h"
 #if defined(ADC_UTILS_ARE_AVAILABLE) // set in ADCUtils.h, if supported architecture was detected
 
-#if !defined(STR_HELPER)
+#if !defined(STR)
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 #endif
@@ -58,7 +58,7 @@ union WordUnionForADCUtils {
  * Enable this to see information on each call.
  * Since there should be no library which uses Serial, it should only be enabled for development purposes.
  */
-#if defined(DEBUG) && !defined(LOCAL_DEBUG)
+#if defined(DEBUG)
 #define LOCAL_DEBUG
 #else
 //#define LOCAL_DEBUG // This enables debug output only for this file
@@ -607,6 +607,8 @@ uint16_t getVoltageMillivoltWith_1_1VoltReference(uint8_t aADCChannelForVoltageM
 
 /*
  * Return true if sVCCVoltageMillivolt is > 4.3 V and < 4.95 V
+ * This does not really work for the UNO board, because it has no series Diode in the USB VCC
+ * and therefore a very low voltage drop.
  */
 bool isVCCUSBPowered() {
     readVCCVoltageMillivolt();
