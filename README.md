@@ -78,15 +78,26 @@ Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14.8 volt
 Given the voltage measurement resistor network from the schematic, with Li-ion (3.7 V VCC) we can merely measure up to 14.8 V.<br/>
 Since the build in load resistor is 12 &ohm;, **the current would go up to 1.4 ampere and the power to 24 watt**, leaving 2.8 watt at the 2 &ohm; shunt resistors.<br/>
 This is too much for the resistors I used for shunt!<br/>
-The solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; already built in one**.
+The solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; already built in**.
 This reduces the current to around 500 mA and power to 9 watt leaving 1 watt at the 2 &ohm; shunt resistors.<br/>
 The voltage must still be measured at the battery terminal, so I use a distinct cable for voltage measurement, normally connected to the built in load resistors / battery + cable.<br/>
 No other adaption has to be made.
 
 <br/>
 
+# Logger function
+By connecting pin 10 to ground, logger mode is entered after startup. Voltage is still measured at the same pin as for Battery mode.
+For current measurement in Logger mode, we use an separate external shunt connected at pin A4.<br/>
+To avoid disturbing the circuit in which we are measuring the current, this shunt is typically smaller than the shunt used in battery mode.
+Its value is defined by `LOGGER_SHUNT_RESISTOR_MILLIOHM`.<br/>
+Cutoff / end condition is, when current drops below 50%, 25% or 12.5% of start current. 
+12.5% is default and useful for logging charging circuits wich reduce current at the end of charge.
+
+<br/>
+
 # Sample screenshots
 This screenshots are from an 1200x800 tablet running the [BlueDisplay](https://github.com/ArminJo/Arduino-BlueDisplay) app.
+The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module** like HC-05, see [here](https://github.com/ArminJo/Arduino-BlueDisplay?tab=readme-ov-file#bluedisplayblink) and [here](https://github.com/ArminJo/Arduino-BlueDisplay?tab=readme-ov-file#connecting-arduino-rx).
 
 ![Li-ion_1100mAh](pictures/Li-ion_1100mAh.png)
 
@@ -95,7 +106,7 @@ This screenshots are from an 1200x800 tablet running the [BlueDisplay](https://g
 # Sample plots
 The plots are created with the Arduino 1.x Serial Plotter. The Arduino 2.x Serial Plotter is not as powerful and uses a different data format.
 
-Plot for **2 parallel Li-Ion cells**.<br/>
+Plot for **2 parallel 18660 Li-Ion cells**.<br/>
 The first capacity value is the "standard" capacity measured from the first peak at standard full voltage 4100 mV to the second peak, the cutoff "high" voltage at 3400 mV.<br/>
 The peaks, which are 50 mV added to the measured value, are artificially generated for easy recognition of the capacity range.<br/>
 The second peak is always suppressed for graphs with discharge to "high", because the end of this graph is by definition the end of the standard capacity range.<br/>
@@ -223,8 +234,8 @@ A value of **99.999 &ohm; indicates overflow** over the maximum value of 65.535 
 - Every second, a sample is taken and displayed.
 - Every 60 seconds the sample is stored.
 - For the first 337 samples (5:37 hours) each 8 bit delta is stored to EEPROM.
-- After the first 337 samples, all data are compressed, and every 120 seconds 2 compressed samples are stored to EEPROM.
-- The number between the voltage and the current in the first row is the virtual EEPROM storage index and incremented at each storage.
+- After 337 samples, all data are compressed by combining 2 samples and doubling the sample period This can be done multiple times.
+- The number between the voltage and the current in the first row is the storage minute count and incremented at each storage.
 
 ![Storing](pictures/Storing.png)
 
@@ -256,6 +267,7 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 - Compression is now done by simply doubling the sampling period, which results in reducing the resolution from 336 of 168 samples directly after compression.
 - Data and chart can be displayed on (old) tablets or mobile running the BlueDisplay app https://github.com/ArminJo/Arduino-BlueDisplay.
 - Plotter pin logic does not depend any more on USB powering.
+- Tested logger function with chart.
 
 ### Version 4.0.0
 - Use capacity between NominalFullVoltageMillivolt and SwitchOffVoltageMillivoltHigh as standard capacity to enable better comparison.
