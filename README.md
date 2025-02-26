@@ -101,6 +101,8 @@ The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module**
 
 ![Li-ion_1100mAh](pictures/Li-ion_1100mAh.png)
 
+![LiFePO4_5300mAh](pictures/LiFePO4_5300mAh.png)
+
 <br/>
 
 # Sample plots

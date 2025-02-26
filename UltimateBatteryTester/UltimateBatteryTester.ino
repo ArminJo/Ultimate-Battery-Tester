@@ -1,5 +1,5 @@
 /*
- *  UltimateBatteryTester.ino
+ *  UltimateBatteryTester.cpp
  *
  *  Measure Voltage, current, ESR (internal series resistance) and capacity of batteries.
  *  Stores the values in EEPROM and display the values and the discharge graph on a tablet or mobile
@@ -31,7 +31,7 @@
  *  The capacity is stored at end of measurement or on button press during the storage.
  *
  *
- *  Copyright (C) 2021-2024  Armin Joachimsmeyer
+ *  Copyright (C) 2021-2025  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  https://github.com/ArminJo/Ultimate-Battery-Tester
@@ -3715,7 +3715,7 @@ void initDisplay(void) {
     BlueDisplay1.clearDisplay(sBackgroundColor);
 
 // This button is not visible during state STATE_SETUP_AND_READ_EEPROM or STATE_WAITING_FOR_BATTERY_OR_VOLTAGE
-    BDButton::BDButtonPGMParameterStruct tBDButtonPGMParameterStruct; // Saves 480 Bytes for all 5 buttons
+    BDButton::BDButtonPGMTextParameterStruct tBDButtonPGMParameterStruct; // Saves 480 Bytes for all 5 buttons
     BDButton::setInitParameters(&tBDButtonPGMParameterStruct, BUTTONS_START_X, BlueDisplay1.getRequestedDisplayHeight() / 6,
     BUTTON_WIDTH, BASE_TEXT_SIZE + BASE_TEXT_SIZE / 3, COLOR16_GREEN, F("Stopped"), BASE_TEXT_SIZE,
     FLAG_BUTTON_DO_BEEP_ON_TOUCH | FLAG_BUTTON_TYPE_TOGGLE_RED_GREEN, sMeasurementState != STATE_STOPPED, &doStartStop);
