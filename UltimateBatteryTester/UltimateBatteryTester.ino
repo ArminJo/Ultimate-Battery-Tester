@@ -193,14 +193,13 @@ bool sLastValueOfCutoffLevelPin;                // To support changing between n
 #define MAIN_VALUES_COLOR           COLOR16_BLUE
 #define VALUES_COLOR                COLOR16_RED
 #define VALUES_TEXT_SIZE            (BASE_TEXT_SIZE * 2)
-#define VALUES_POSITION_Y           (BASE_TEXT_SIZE * 2)
+#define VALUES_POSITION_Y           BASE_TEXT_SIZE
 #define VALUES_POSITION_X           (BASE_TEXT_SIZE * 2)
-#define MESSAGE_START_POSITION_Y    ((BASE_TEXT_SIZE * 3) - (BASE_TEXT_SIZE / 2))
+#define MESSAGE_START_POSITION_Y    (BASE_TEXT_SIZE * 3)
 
 #define ESR_POSITION_X              (VALUES_POSITION_X + (BASE_TEXT_SIZE * 20))
 #define CURRENT_POSITION_X          (VALUES_POSITION_X + (BASE_TEXT_SIZE * 10))
 #define CHART_VALUES_POSITION_X     (CHART_START_X + CHART_WIDTH)
-#define CHART_VALUES_POSITION_Y     (BlueDisplay1.getRequestedDisplayHeight() - (BASE_TEXT_SIZE * 9) + (BASE_TEXT_SIZE / 2))
 
 #define CHART_VOLTAGE_COLOR     COLOR16_RED
 #define CHART_ESR_COLOR         COLOR16_GREEN
@@ -4020,8 +4019,7 @@ void printCapacityValue() {
     } else {
         snprintf_P(tString, sizeof(tString), PSTR("%5u mAh        "), sMeasurementInfo.CapacityMilliampereHour);
     }
-    BlueDisplay1.drawText(CHART_VALUES_POSITION_X,
-            BlueDisplay1.getRequestedDisplayHeight() - (sChartDataTextSize * 8) + (sChartDataTextSize / 2), tString,
+    BlueDisplay1.drawText(CHART_VALUES_POSITION_X, BlueDisplay1.getRequestedDisplayHeight() - (sChartDataTextSize * 9), tString,
             sChartDataTextSize, sTextColor, sBackgroundColor);
 }
 
@@ -4030,8 +4028,7 @@ void printCapacityValue() {
  */
 void printChartValues() {
     char tStringBuffer[30];
-//    uint16_t tYPosition = CHART_VALUES_POSITION_Y;
-    uint16_t tYPosition = (BlueDisplay1.getRequestedDisplayHeight() - (sChartDataTextSize * 9) + (sChartDataTextSize / 2));
+    uint16_t tYPosition = (BlueDisplay1.getRequestedDisplayHeight() - (sChartDataTextSize * 10));
 
 // Battery type
     const char *aBatteryTypePtr;
