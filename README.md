@@ -33,6 +33,7 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 - Display of ESR, voltage, current and capacity on a **1602 LCD**.
 - Display of values and the **discharge graph on a tablet or mobile** running the [BlueDisplay](https://play.google.com/store/apps/details?id=de.joachimsmeyer.android.bluedisplay) app.
 - Computes "Standard" capacity between NominalFullVoltageMillivolt and SwitchOffVoltageMillivoltHigh to enable better comparison.
+- Selectable cutoff voltage `Standard`, `Low` and `Zero` (50 mV). E.g. for Li-ion the are 4.3 V and 3.0 V.
 - Supports **2 different load resistors** for different battery voltages to keep current below 600 mA.
 - Supports battery voltages up to 20 volt (@5V Arduino VCC) and external load resistor e.g. for measuring of battery packs.
 - **Logger mode (voltage + current)** for charting external charger or similar devices.
@@ -42,7 +43,7 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 # Li-Ion battery capacity
 For Li-Ion the capacity is specified for discharge from **4.2 V to 3.0 V** as in [CGR18650CG Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/CGR18650CG-Panasonic.pdf)
 or to **2.75 V** as in [ICR18650-26A Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/ICR18650-26A_Samsung.pdf).
-The UltimateBatteryTester has a **cut-off voltage of 3.5 V** for Li-Ion to treat the cells with care.<br/>
+The UltimateBatteryTester has a **cut-off voltage of 3.4 V** for Li-Ion to treat the cells with care.<br/>
 This results in a reduced capacity displayed by approximately the factor 0.85 (1.18), e.g. a Li-Ion cell with nominal capacity of 2150 mAh at 3 V EOD (End Of Discharge) is measured as 1830 mAh at 3.5 V EOD.<br/>
 The cut off voltage can be changed to low values by connecting pin 11 to ground. See [here](#special-pin-usage).
 

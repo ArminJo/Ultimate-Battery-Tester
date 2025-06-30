@@ -167,6 +167,7 @@ bool sLastValueOfCutoffLevelPin;                // To support changing between n
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
 //#define DO_NOT_NEED_BASIC_TOUCH_EVENTS
 #define DO_NOT_NEED_LONG_TOUCH_DOWN_AND_SWIPE_EVENTS  // Disables LongTouchDown and SwipeEnd events.
+#define DO_NOT_NEED_SPEAK_EVENTS            // Disables SpeakingDone event handling. Saves up to 54 bytes program memory and 18 bytes RAM.
 #define ONLY_CONNECT_EVENT_REQUIRED         // Disables reorientation, redraw and SensorChange events
 #define SUPPRESS_SERIAL_PRINT               // To reduce code size
 
@@ -193,9 +194,9 @@ bool sLastValueOfCutoffLevelPin;                // To support changing between n
 #define MAIN_VALUES_COLOR           COLOR16_BLUE
 #define VALUES_COLOR                COLOR16_RED
 #define VALUES_TEXT_SIZE            (BASE_TEXT_SIZE * 2)
-#define VALUES_POSITION_Y           BASE_TEXT_SIZE
+#define VALUES_POSITION_Y           (BASE_TEXT_SIZE / 2)
 #define VALUES_POSITION_X           (BASE_TEXT_SIZE * 2)
-#define MESSAGE_START_POSITION_Y    (BASE_TEXT_SIZE * 3)
+#define MESSAGE_START_POSITION_Y    ((BASE_TEXT_SIZE * 2) + (BASE_TEXT_SIZE / 2))
 
 #define ESR_POSITION_X              (VALUES_POSITION_X + (BASE_TEXT_SIZE * 20))
 #define CURRENT_POSITION_X          (VALUES_POSITION_X + (BASE_TEXT_SIZE * 10))
@@ -376,6 +377,7 @@ struct BatteryTypeInfoStruct {
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT        3400 // Switch off voltage for Li-ion standard capacity measurement
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for extended capacity measurement
 
+#define NIMH_STANDARD_FULL_VOLTAGE_MILLIVOLT       1340 // Start voltage for NI-MH standard capacity measurement
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW      1000 // Switch off voltage for extended capacity measurement
 
@@ -390,7 +392,7 @@ struct BatteryTypeInfoStruct {
 
 struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", 100, 0, 0, 0, NO_LOAD, 0 }, /* Below 100 mV and not below 50, to avoid toggling between no and low batt */
 { "Low batt. ", 1000, 0, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, DISCHARGE_CUTOFF_LEVEL_ZERO_MILLIVOLT, HIGH_LOAD, 100 }, /* For researching of worn out batteries. */
-{ "NiCd NiMH ", 1460, 1400, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, HIGH_LOAD, 100 }, /*400 mA*/
+{ "NiCd NiMH ", 1460, NIMH_STANDARD_FULL_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, HIGH_LOAD, 100 }, /*400 mA*/
 { "Alkali    ", 1550, 1500, 1300, 1000, HIGH_LOAD, 100 }, /*500 mA*/
 { "NiZn batt.", 1850, 1650, 1400, 1300, HIGH_LOAD, 100 }, /*550 mA*/
 { "LiFePO4   ", 3400, 3400, 3050, 2700, LOW_LOAD, 10 }, /*270 mA https://www.jackery.com/blogs/knowledge/ultimate-guide-to-lifepo4-voltage-chart*/
@@ -457,7 +459,7 @@ struct lastDiplayedValuesStruct {
 
 uint8_t sLastBatteryTypeIndex = TYPE_INDEX_MAX + 2; // For triggering printing only if BatteryTypeIndex value changed
 uint16_t sLastVoltageNoLoadMillivoltForPrintAndCountdown;
-bool sBatteryOrCurrentOrVoltageWasDetected = false; // set by detectBatteryOrLoggerVoltageOrCurrentLCD() if detection was successful
+bool sBatteryOrCurrentOrVoltageWasDetected = false; // set by detectBatteryOrLoggerVoltageOrCurrentLCD_BD() if detection was successful
 bool sButtonUsageMessageWasPrinted = false;
 bool sVoltageNoLoadIsDisplayedOnLCD = false;
 
@@ -493,6 +495,7 @@ bool sMeasurementWasFinished = false; // true if stopped by detecting end condit
 #define LI_ION_VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT 3500 // 3.5 volt
 #define VCC_CHECK_PERIOD_MILLIS                     (60000L) // check every minute
 #define VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP         5 // Shutdown after 5 times below VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT or below VCC_EMERGENCY_UNDERVOLTAGE_THRESHOLD_MILLIVOLT
+#define LOCAL_INFO // For Serial output at isVCCUndervoltageMultipleTimes(). This is undefined after the include!
 #include "ADCUtils.hpp"
 
 /*
@@ -580,7 +583,7 @@ bool sDoPrintCaption = true; // Value used for (recursive) call to printValuesFo
 void getBatteryOrLoggerVoltageMillivolt();
 void addToCapacity();
 uint16_t getBatteryOrLoggerRawVoltage();
-void detectBatteryOrLoggerVoltageOrCurrentLCD();
+void detectBatteryOrLoggerVoltageOrCurrentLCD_BD();
 void clearLogger1SecondAccumulator();
 void clearLogger1MinuteAccumulator();
 void getLogger1SecondValues();
@@ -594,11 +597,11 @@ bool isVoltageOrCurrentRemoved();
 void playEndTone();
 void playAttentionTone();
 void setLoad(uint8_t aNewLoadState);
-void printStoredDataLCD();
-void printMilliampere4DigitsLCD();
-void printVoltageNoLoadMillivoltWithTrailingSpaceLCD();
+void printStoredDataLCD_BD();
+void printMilliampere4DigitsLCD_BD();
+void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
 void clearLastDiplayedValues();
-void printMeasurementValuesLCD();
+void printMeasurementValuesLCD_BD();
 void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
         bool aIsLastElement);
 void printMillisValueAsFloat(uint16_t aValueInMillis);
@@ -811,7 +814,7 @@ void setup() {
     readAndProcessEEPROMData(true);
 #endif
 
-    printStoredDataLCD();
+    printStoredDataLCD_BD();
 
     printlnIfNotPlotterOutput(); // end of stored data
 
@@ -919,10 +922,10 @@ void loop() {
                         myLCD.setCursor(7, 0);
                         myLCD.print("---"); // Overwrite "Finished" and signal with "---", that we are stopped now
 #endif
-                        printMilliampere4DigitsLCD();
+                        printMilliampere4DigitsLCD_BD();
                     }
                     if (sMeasurementInfo.Voltages.Battery.NoLoadMillivolt > NO_BATTERY_MILLIVOLT) {
-                        printVoltageNoLoadMillivoltWithTrailingSpaceLCD();
+                        printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
                     }
                 }
 
@@ -936,7 +939,7 @@ void loop() {
                 } else {
                     // Here not stopped or just removed -> Print measurement values
                     addToCapacity();
-                    printMeasurementValuesLCD();
+                    printMeasurementValuesLCD_BD();
 
                     // For battery storing to EEPROM, we want to store the value of the stop condition in EEPROM, so do not check here.
                     if (sInLoggerModeAndFlags) {
@@ -1023,25 +1026,20 @@ void checkAndHandleVCCUndervoltage() {
  */
 void handlePeriodicDetectionOfProbe() {
     if (millis() - sLastMillisOfBatteryOrVoltageDetection >= BATTERY_OR_VOLTAGE_DETECTION_PERIOD_MILLIS) {
-
         sLastMillisOfBatteryOrVoltageDetection = millis();
+
         /*
          * Check if battery was inserted or voltage connected
          */
-        detectBatteryOrLoggerVoltageOrCurrentLCD();
-        // we waited up to 2 seconds in detectBatteryOrLoggerVoltageOrCurrentLCD(), so must check if mode has not changed by button press
+        detectBatteryOrLoggerVoltageOrCurrentLCD_BD();
+        // we waited up to 2 seconds in detectBatteryOrLoggerVoltageOrCurrentLCD_BD(), so must check if mode has not changed by button press
         if (sMeasurementState == STATE_WAITING_FOR_BATTERY_OR_EXTERNAL) {
             if (sBatteryOrCurrentOrVoltageWasDetected) {
                 /*
-                 * Successfully detected here
-                 * switch state and show values detected
+                 * Successfully detected here -> switch state and show values detected
                  */
                 switchToStateInitialSamples();
 
-                printMeasurementValuesLCD();
-#if defined(USE_LCD)
-                _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
-#endif
 #if !defined(SUPPORT_BLUEDISPLAY_CHART)
                 // If found, print button usage once at start of InitialESRMeasurement, but not, if display is attached, which has attach button
                 if (!sButtonUsageMessageWasPrinted) {
@@ -1081,7 +1079,7 @@ void handlePeriodicDetectionOfProbe() {
                  */
                 bool tNoLoadVoltageOrCurrentPrinted = false; // for printlnIfNotPlotterOutput() below
                 if (sMeasurementInfo.Voltages.Battery.NoLoadMillivolt > NO_BATTERY_MILLIVOLT) {
-                    printVoltageNoLoadMillivoltWithTrailingSpaceLCD();
+                    printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
                     tNoLoadVoltageOrCurrentPrinted = true;
                 } else if (!sVoltageNoLoadIsDisplayedOnLCD) {
 #if defined(USE_LCD)
@@ -1093,7 +1091,7 @@ void handlePeriodicDetectionOfProbe() {
                     /*
                      * Here U or I is valid, but not both
                      */
-                    printMilliampere4DigitsLCD();
+                    printMilliampere4DigitsLCD_BD();
                     tNoLoadVoltageOrCurrentPrinted = true;
                 }
 
@@ -1176,7 +1174,7 @@ void handleEndOfStateInitialSamples() {
  */
 void handleStateStopped() {
     if (abs(sLastVoltageNoLoadMillivoltForPrintAndCountdown - sMeasurementInfo.Voltages.Battery.NoLoadMillivolt) > 5) {
-        printVoltageNoLoadMillivoltWithTrailingSpaceLCD();
+        printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
         printlnIfNotPlotterOutput();
     }
     /*
@@ -2216,9 +2214,9 @@ void getBatteryValues() {
     if (sMeasurementInfo.Milliampere > 1) {
         /*
          * Compute sESRAverage
-         * Shift history array and insert current value
+         * Shift history array to end and insert current value at [0]
          */
-        uint8_t tESRAverageHistoryCounter = 1; // we always add sESRHistory[0]
+        uint8_t tESRAverageHistoryCounter = 1; // below we add current value too
         uint32_t tESRAverageAccumulator = 0;
         for (uint_fast8_t i = HISTORY_SIZE_FOR_ESR_AVERAGE - 1; i > 0; --i) {
             if (sESRHistory[i - 1] != 0) {
@@ -2253,7 +2251,7 @@ void getBatteryValues() {
 #endif
 
         /*
-         * Compute sCurrentLoadResistorAverage if array is full
+         * Compute sCurrentLoadResistorAverage if array sCurrentLoadResistorHistory is full
          * Formula is: LoadVoltage / LoadCurrent and includes the MosFet and the connector resistance.
          * Shift load resistor history array and insert current value
          */
@@ -2392,11 +2390,14 @@ void setBatteryTypeIndex(uint16_t aBatteryVoltageMillivolt) {
  * For logger it measures the current for detection
  * @return true, if battery or logger voltage and current detected
  */
-void detectBatteryOrLoggerVoltageOrCurrentLCD() {
+void detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
     setLoad(NO_LOAD);
     getBatteryOrLoggerVoltageMillivolt();
 
     if (sInLoggerModeAndFlags) {
+        /*
+         * Logger here
+         */
         getCurrent(ADC_CHANNEL_LOGGER_CURRENT, LOGGER_SHUNT_RESISTOR_MILLIOHM);
         if (sMeasurementInfo.Milliampere >= NO_LOGGER_MILLAMPERE
                 || sMeasurementInfo.Voltages.Battery.NoLoadMillivolt > NO_BATTERY_MILLIVOLT) {
@@ -2445,7 +2446,7 @@ void detectBatteryOrLoggerVoltageOrCurrentLCD() {
 #endif
             } else {
                 // print voltage before the delay for LCD display
-                printVoltageNoLoadMillivoltWithTrailingSpaceLCD();
+                printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
 #if !defined(SUPPRESS_SERIAL_PRINT)
             if (!sOnlyPlotterOutput) {
                 Serial.print(F(" => "));
@@ -2473,7 +2474,7 @@ void detectBatteryOrLoggerVoltageOrCurrentLCD() {
     }
 }
 
-void printVoltageNoLoadMillivoltWithTrailingSpaceLCD() {
+void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
     uint16_t tVoltageNoLoadMillivolt = sMeasurementInfo.Voltages.Battery.NoLoadMillivolt; // saves 12 bytes programming space
     sLastVoltageNoLoadMillivoltForPrintAndCountdown = tVoltageNoLoadMillivolt;
 
@@ -2541,6 +2542,8 @@ void printCapacity5Digits() {
 
 /*
  * Print ESR, if value has changed by more than 1
+ * in STATE_INITIAL_SAMPLES we print current ESR / sESRHistory[0]
+ * otherwise we print average ESR.
  */
 void printESR() {
     uint32_t tMilliohm; // Compiler complains about initialize variable, which is wrong
@@ -2654,7 +2657,7 @@ void printCounter(uint16_t aNumberToPrint) {
  * Print only if changed more than 1 mA
  * Print no newline
  */
-void printMilliampere4DigitsLCD() {
+void printMilliampere4DigitsLCD_BD() {
 #if !defined(SUPPRESS_SERIAL_PRINT)
     if (!sOnlyPlotterOutput) {
         Serial.print(sMeasurementInfo.Milliampere);
@@ -2701,7 +2704,7 @@ void clearLastDiplayedValues() {
 /*
  * Called exclusively from setup() after readAndProcessEEPROMData()
  */
-void printStoredDataLCD() {
+void printStoredDataLCD_BD() {
 #if defined(USE_LCD)
     myLCD.clear();
     myLCD.print(getVCCVoltage(), 1);
@@ -2711,7 +2714,7 @@ void printStoredDataLCD() {
      * Print battery values, and use state STATE_SETUP_AND_READ_EEPROM for formatting
      * "0.061o h 1200mAh" using sMeasurementInfo.ESRMilliohm
      */
-    printMeasurementValuesLCD();
+    printMeasurementValuesLCD_BD();
 #if defined(USE_LCD)
     _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
@@ -2743,7 +2746,7 @@ void printStoredDataLCD() {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 
-void printMeasurementValuesLCD() {
+void printMeasurementValuesLCD_BD() {
     sInLCDPrint = true; // disable printing by button handler
     uint8_t tMeasurementState = sMeasurementState; // Because sMeasurementState is volatile
     if (tMeasurementState != STATE_SETUP_AND_READ_EEPROM) {
@@ -2753,8 +2756,8 @@ void printMeasurementValuesLCD() {
         /*
          * Print no load voltage here
          */
-        auto tLastVoltageNoLoadMillivoltForPrintAndCountdown = sLastVoltageNoLoadMillivoltForPrintAndCountdown; // Must be before printVoltageNoLoadMillivoltWithTrailingSpaceLCD()
-        printVoltageNoLoadMillivoltWithTrailingSpaceLCD();
+        auto tLastVoltageNoLoadMillivoltForPrintAndCountdown = sLastVoltageNoLoadMillivoltForPrintAndCountdown; // Must be before printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD()
+        printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
 #if !defined(SUPPRESS_SERIAL_PRINT)
         if (!sOnlyPlotterOutput) {
             // 4.094 V,  334 mA at 11.949 ohm, ESR=0.334 ohm, capacity=3501 mAh
@@ -2796,7 +2799,7 @@ void printMeasurementValuesLCD() {
         /*
          * Print Current
          */
-        printMilliampere4DigitsLCD();
+        printMilliampere4DigitsLCD_BD();
     }
 
     /**********************
@@ -3655,8 +3658,7 @@ void setRunningStateButtonText() {
     if (sMeasurementWasFinished) {
         tButtonTextIndex++;
     }
-    TouchButtonRunningState.setTextFromStringArray((const __FlashStringHelper* const*) sRunningStateButtonTextStringArray,
-            tButtonTextIndex, true);
+    TouchButtonRunningState.setPGMTextFromPGMArray(sRunningStateButtonTextStringArray, tButtonTextIndex, true);
 }
 
 /*
@@ -3745,8 +3747,8 @@ void setCutoffHighLowZeroButtonText(bool doDrawButton) {
              * Battery mode here
              */
             if (sMeasurementInfo.BatteryTypeIndex == TYPE_INDEX_NO_BATTERY) {
-                TouchButtonCutoffHighLowZero.setTextFromStringArray((const __FlashStringHelper* const*) sCutoffButtonTextStringArray,
-                        sMeasurementInfo.CutoffLevel, doDrawButton);
+                TouchButtonCutoffHighLowZero.setPGMTextFromPGMArray(sCutoffButtonTextStringArray, sMeasurementInfo.CutoffLevel,
+                        doDrawButton);
                 return;
             } else {
                 uint16_t tCutoffVoltageMillivolt;
@@ -3989,7 +3991,7 @@ void readAndDrawEEPROMValues() {
     sChartReadValueArrayType = TYPE_VOLTAGE; // handle voltages in next call
     readAndProcessEEPROMData(false);
     /*
-     * Show ESR if we are just after boot and data stored was no logger data
+     * Show ESR if we are just after boot and data stored was battery data
      * OR we are just not after boot and in battery mode
      */
     if ((sMeasurementState == STATE_SETUP_AND_READ_EEPROM && !StartValues.inLoggerModeAndFlags)
@@ -4024,7 +4026,7 @@ void printCapacityValue() {
 }
 
 /*
- * Print all chart related values at the lower right
+ * Print all chart related values at the lower right of screen display
  */
 void printChartValues() {
     char tStringBuffer[30];
