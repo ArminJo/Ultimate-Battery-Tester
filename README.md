@@ -134,6 +134,8 @@ Plot of a NiMh battery sold as 4/5AA 1800mAh Ni-Mh showing only 960 mAh.
 # Compile with the Arduino IDE
 Download and extract the repository. In the Arduino IDE open the sketch with File -> Open... and select the UltimateBatteryTester folder.
 
+As the program size is at around 100%, you need to burn the UNO bootloader on the Nano before loading the program onto the Nano.
+
 # Pictures
 
 | Overview with distinct voltage measurement cable (thin red one) to enable additional series resistors for battery packs | Top View |
