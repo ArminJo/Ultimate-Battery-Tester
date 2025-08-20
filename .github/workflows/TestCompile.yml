@@ -61,4 +61,5 @@ jobs:
           arduino-board-fqbn: arduino:avr:nano:cpu=atmega328
           required-libraries: '${{ matrix.required-libraries }}'
           build-properties: '{ "All": ${{ toJson(matrix.build-properties) }} }'
+          debug-compile: true # To see the actual size, when compiled with Arduino
 #          debug-install: true
