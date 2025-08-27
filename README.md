@@ -42,21 +42,24 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 
 # Li-Ion battery capacity
 For Li-Ion the capacity is specified for discharge from **4.2 V to 3.0 V** as in [CGR18650CG Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/CGR18650CG-Panasonic.pdf)
-or to **2.75 V** as in [ICR18650-26A Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/ICR18650-26A_Samsung.pdf).
-The UltimateBatteryTester has a **cut-off voltage of 3.4 V** for Li-Ion to treat the cells with care.<br/>
+or to **2.75 V** as in [ICR18650-26A Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/ICR18650-26A_Samsung.pdf) or even to **2.5 V**.<br/>
+The **UltimateBatteryTester has a cut-off voltage of 3.4 V** for Li-Ion to treat the cells with care.<br/>
 This results in a reduced capacity displayed by approximately the factor 0.85 (1.18), e.g. a Li-Ion cell with nominal capacity of 2150 mAh at 3 V EOD (End Of Discharge) is measured as 1830 mAh at 3.5 V EOD.<br/>
 The cut off voltage can be changed to low values by connecting pin 11 to ground. See [here](#special-pin-usage).
 
 <br/>
 
 # Battery ESR
-The internal resistance is an indicator of the health of the cell. E.g. if a NiMH cell has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA**, which may be to low for the circuit to work properly.
+The internal resistance is an indicator of the health of the cell. E.g. if a NiMH cell has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA** instead of 1.2 V, which may be to low for the circuit to work properly.<br/>
 ESR values for NiMH can go down to excellent 0.05 &ohm;.<br/>
 Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;.
 
-It seems that the **dynamic ESR** measured by devices like **YR1035+** is around half as much as the **?static? ESR** measured by this program.
-This was suprising for me, since I expected only a fixed offset, because of connection imperfections.
+It seems that the **dynamic ESR** measured by devices like **YR1035+** is around half as much as the **static ESR** measured by this program.
+This was suprising for me, since I expected only a fixed offset, because of connection imperfections.<br/>
+But this **static ESR gives you a better impression of the voltage loss at a given static current**.
 
+
+<br/>
 
 # Principle of operation
 The battery type is detected by a fixed mapping of voltage to type in `BatteryTypeInfoArray[]`.
@@ -98,11 +101,19 @@ Cutoff / end condition is, when current drops below 50%, 25% or 12.5% of start c
 
 # Sample screenshots
 This screenshots are from an 1200x800 tablet running the [BlueDisplay](https://github.com/ArminJo/Arduino-BlueDisplay) app.
-The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module** like HC-05, see [here](https://github.com/ArminJo/Arduino-BlueDisplay?tab=readme-ov-file#bluedisplayblink) and [here](https://github.com/ArminJo/Arduino-BlueDisplay?tab=readme-ov-file#connecting-arduino-rx).
+The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module** like HC-05, see [here](https://github.com/ArminJo/Arduino-BlueDisplay?tab=readme-ov-file#bluedisplayblink).
 
-![Li-ion_1100mAh](pictures/Li-ion_1100mAh.png)
-
-![LiFePO4_5300mAh](pictures/LiFePO4_5300mAh.png)
+|  |  |
+|-|-|
+| ![Li-ion_1100mAh](pictures/Li-ion_1100mAh.png) | ![LiFePO4_5300mAh](pictures/LiFePO4_5300mAh.png) |
+| Used Li-ion battery with 1100 mAh. | LiFePO4 battery with 5300 mAh.  |
+| | |
+| ![Used_Samsung_ICR18659-24B](pictures/Used_Samsung_ICR18659-24B.png) | ![Used_Samsung_ICR18659-24B_to_Zero](pictures/Used_Samsung_ICR18659-24B_to_Zero.png) |
+| Used Samsung ICR18659 24B with 1100 mAh. | The same Samsung ICR18659 24B **accidentally discharged to almost zero**. Here you can see the small capacity below 3.4 V. After directly recharging with 10 mA until 2.8 V and then with 30 mA to 3.5 V the capacity and ESR were like before, which I did not expect :-). |
+| | |
+| ![755590_4459mAh](pictures/755590_4459mAh.png) |  |
+| A new 755590 pouch cell with 4459mAh and an ESR of 0.14 &ohm;, maybe because of the protection circuit. |   |
+| | |
 
 <br/>
 
@@ -119,9 +130,6 @@ The second capacity value is the total capacity measured in this graph.<br/>
 
 Plot a **worn out single Li-ion cell** with increased ESR and a more flat curve at 3.4 V.
 ![Li-ion_toLow](pictures/Li-ion_ToLow.png)
-
-Plot for a **Li-Ion cell** with accidentally setting the cutoff voltage to zero (0.5 volt) (older graph version without peaks).
-![Discharge to zero](pictures/Li-ion_ToZero_QUIXIN_21A21.png)
 
 Plot for a **NiMH cell** with 55 m&ohm; ESR.
 ![870mAh_120mOhm](pictures/1275mAh_55mOhm.png)

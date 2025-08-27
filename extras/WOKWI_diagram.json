@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "author": "Armin",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-nano", "id": "nano", "top": 24, "left": 9.1, "attrs": {} },
+    { "type": "wokwi-lcd1602", "id": "lcd1", "top": -178.97, "left": -70.4, "attrs": {} },
+    {
+      "type": "wokwi-slide-potentiometer",
+      "id": "pot2",
+      "top": 110.6,
+      "left": -20.2,
+      "attrs": { "travelLength": "60" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz1",
+      "top": -7.2,
+      "left": -132.6,
+      "attrs": { "volume": "0.1" }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "btn1text",
+      "top": 124.8,
+      "left": 211.2,
+      "attrs": { "text": "Voltage." }
+    },
+    {
+      "type": "wokwi-slide-potentiometer",
+      "id": "pot1",
+      "top": 187.4,
+      "left": -20.2,
+      "attrs": { "travelLength": "60" }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "btn1text1",
+      "top": 192,
+      "left": 211.2,
+      "attrs": { "text": "Current." }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": -3.4,
+      "left": 230.4,
+      "attrs": { "color": "green" }
+    },
+    { "type": "wokwi-slide-switch", "id": "sw1", "top": -158.8, "left": 243.1, "attrs": {} },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "sw2",
+      "top": -101.2,
+      "left": 262.3,
+      "attrs": { "value": "1" }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "btn1text2",
+      "top": -153.6,
+      "left": 288,
+      "attrs": { "text": "Cutoff low" }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "btn1text3",
+      "top": 9.6,
+      "left": 316.8,
+      "attrs": { "text": "Stop / Start" }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "btn1text4",
+      "top": -96,
+      "left": 316.8,
+      "attrs": { "text": "Plotter output" }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "btn1text5",
+      "top": 288,
+      "left": -220.8,
+      "attrs": {
+        "text": "To simulate a battery, select the right voltage at one simulation and then start a new simulation"
+      }
+    }
+  ],
+  "connections": [
+    [ "pot2:GND", "nano:GND.1", "black", [ "v-48", "h-42.3" ] ],
+    [ "pot2:VCC", "nano:5V", "red", [ "v-57.6", "h153.6" ] ],
+    [ "nano:GND.2", "lcd1:VSS", "black", [ "v-57.6", "h-163.2" ] ],
+    [ "lcd1:VDD", "nano:5V", "red", [ "v144", "h153.7" ] ],
+    [ "lcd1:K", "nano:GND.2", "black", [ "h28.8", "v76.8" ] ],
+    [ "lcd1:A", "nano:5V", "red", [ "v9.6", "h-124.9", "v134.4", "h153.6" ] ],
+    [ "lcd1:D7", "nano:6", "green", [ "v38.4", "h-9.3" ] ],
+    [ "nano:5", "lcd1:D6", "green", [ "v-38.4", "h-9.8" ] ],
+    [ "nano:4", "lcd1:D5", "green", [ "v-14.4", "h-29.5" ] ],
+    [ "nano:3", "lcd1:D4", "green", [ "v-24", "h-48.6" ] ],
+    [ "bz1:1", "nano:GND.1", "black", [ "v28.8", "h259.2" ] ],
+    [ "nano:7", "lcd1:RS", "gold", [ "v-38.4", "h-86.7" ] ],
+    [ "lcd1:EN", "nano:8", "gold", [ "v48", "h67.1" ] ],
+    [ "lcd1:E", "nano:8", "gold", [ "v57.6", "h57.6" ] ],
+    [ "nano:9", "bz1:2", "blue", [ "v-9.6", "h-67.2", "v57.6" ] ],
+    [ "pot2:SIG", "nano:A0", "orange", [ "h-9.6", "v-48.8", "h86.4" ] ],
+    [ "pot2:GND", "pot1:GND", "black", [ "v105.6", "h5.2" ] ],
+    [ "pot2:VCC", "pot1:VCC", "red", [ "h0", "v105.6" ] ],
+    [ "nano:A1", "pot1:SIG", "orange", [ "v28.8", "h-105.6", "v164" ] ],
+    [ "btn1:2.l", "nano:GND.1", "black", [ "v77", "h-76.8" ] ],
+    [ "btn1:1.l", "nano:2", "green", [ "h0" ] ],
+    [ "sw1:3", "btn1:2.r", "black", [ "h38.6", "v153.4" ] ],
+    [ "sw2:3", "btn1:2.r", "black", [ "h19.4", "v95.8" ] ],
+    [ "sw2:2", "nano:10", "#8f4814", [ "v48", "h-211.1" ] ],
+    [ "sw1:2", "nano:11", "#8f4814", [ "v115.2", "h-220.7" ] ],
+    [ "sw1:1", "nano:5V", "red", [ "v96", "h-38.4", "v124.8", "h-76.8" ] ],
+    [ "sw2:1", "nano:5V", "red", [ "v38.4", "h-57.6", "v124.8", "h-76.8" ] ]
+  ],
+  "dependencies": {}
+}
