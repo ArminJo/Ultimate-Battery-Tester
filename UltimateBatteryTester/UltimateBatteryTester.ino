@@ -80,6 +80,10 @@
  * Disables many Serial output to save program memory space.
  */
 //#define SUPPORT_BLUEDISPLAY_CHART
+#if defined(SUPPORT_BLUEDISPLAY_CHART)
+// This requires 1304 bytes program memory and exceeds 100% in Arduino IDE, because the "-mrelax" linker option is not set there.
+//#define ENABLE_DISPLAY_OF_DATE_AND_TIME
+#endif
 //
 /*
  * Activate the type of LCD you use
@@ -194,6 +198,10 @@ bool sLastValueOfCutoffLevelPin;                // To support changing between n
 #define BLUETOOTH_BAUD_RATE     9600        // Default baud rate of my HC-05 modules, which is not very reactive
 #  endif
 
+#if defined ENABLE_DISPLAY_OF_DATE_AND_TIME
+#include "BDTimeHelper.hpp"
+#endif // ENABLE_DISPLAY_OF_DATE_AND_TIME
+
 /*
  * Scale the screen such, that this fit horizontally.
  * Border - YLabels - Chart with CO2_ARRAY_SIZE / 2 - Border - Buttons for 6 big characters - Border
@@ -208,15 +216,15 @@ bool sLastValueOfCutoffLevelPin;                // To support changing between n
 #define CHART_AXES_SIZE (BASE_TEXT_SIZE / 8) // 2
 #define BUTTONS_START_X ((BASE_TEXT_SIZE * 4) + CHART_WIDTH)
 
-#define MAIN_VALUES_COLOR           COLOR16_BLUE
-#define VALUES_COLOR                COLOR16_RED
-#define VALUES_TEXT_SIZE            (BASE_TEXT_SIZE * 2)
-#define VALUES_POSITION_Y           (BASE_TEXT_SIZE / 2)
-#define VALUES_POSITION_X           (BASE_TEXT_SIZE * 2)
+#define PROBE_VALUES_TEXT_SIZE      (BASE_TEXT_SIZE * 2)
+#define PROBE_VALUES_POSITION_Y     (BASE_TEXT_SIZE / 2)
+#define PROBE_VALUES_POSITION_X     (BASE_TEXT_SIZE * 2)
 #define MESSAGE_START_POSITION_Y    ((BASE_TEXT_SIZE * 2) + (BASE_TEXT_SIZE / 2))
 
-#define ESR_POSITION_X              (VALUES_POSITION_X + (BASE_TEXT_SIZE * 20))
-#define CURRENT_POSITION_X          (VALUES_POSITION_X + (BASE_TEXT_SIZE * 10))
+#define VOLTAGE_POSITION_X          (PROBE_VALUES_POSITION_X)
+#define ESR_POSITION_X              (PROBE_VALUES_POSITION_X + (BASE_TEXT_SIZE * 20))
+#define CURRENT_POSITION_X          (PROBE_VALUES_POSITION_X + (BASE_TEXT_SIZE * 10))
+
 #define CHART_VALUES_POSITION_X     (CHART_START_X + CHART_WIDTH)
 
 #define CHART_VOLTAGE_COLOR     COLOR16_RED
@@ -231,26 +239,28 @@ bool sLastValueOfCutoffLevelPin;                // To support changing between n
 #define CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED 30L
 #define SECONDS_PER_MINUTE                     60L
 
+/*
+ * Brightness handling
+ */
 #define BRIGHTNESS_LOW      2
 #define BRIGHTNESS_MIDDLE   1
 #define BRIGHTNESS_HIGH     0
 #define START_BRIGHTNESS    BRIGHTNESS_HIGH
 uint8_t sCurrentBrightness = START_BRIGHTNESS;
-color16_t sBackgroundColor = COLOR16_WHITE;
-color16_t sTextColor = COLOR16_BLACK;
-uint8_t sChartDataTextSize;
+color16_t sBackgroundColor = COLOR16_WHITE; // for brightness
+color16_t sTextColor = COLOR16_BLACK; // for brightness
 
-uint16_t sCompressionOffsetMillivolt; // Value to subtract from millivolt before compressing
-uint8_t sCompressionFactor; // Factor for mV, mOhm, mA to chart array data
+Chart VoltageChart;
+//Chart ResistanceAndCurrentChart; // not yet supported
+uint8_t sChartDataTextSize;
 /*
  * sCompressionFactor 10 means each grid is 200 mV and maximum uncompressed 8 bit value is 5.1 V
  * 25 means each grid is 0.5 V and maximum uncompressed 8 bit value is 12.75 V.
  * 50 means each grid is 1 V and maximum uncompressed 8 bit value is 25 V. But only 7 volt can be displayed.
  */
-uint8_t sChartCompressionFactor; // (initial) factor for mV to chart array data
-
-Chart VoltageChart;
-//Chart ResistanceAndCurrentChart; // not yet supported
+uint8_t sCompressionFactor; // Factor for mV, mOhm, mA to chart array data
+uint8_t sChartCompressionFactor; // (initial) factor for mV to chart array data, required to compute sCompressionFactor for ESR and current.
+uint16_t sCompressionOffsetMillivolt; // Value to subtract from millivolt before compressing
 
 const char RunningStateButtonStringBooting[] PROGMEM = "Booting";
 const char RunningStateButtonStringWaiting[] PROGMEM = "Waiting";
@@ -283,6 +293,7 @@ BDButton TouchButtonOnlyTextAmpere;
 #define TYPE_VOLTAGE    0
 #define TYPE_ESR        1
 #define TYPE_CURRENT    2
+#define TYPE_NO_DATA    3 // is 8 bytes shorter than TYPE_NO_DATA    0
 uint8_t sChartReadValueArrayType; // 0 = voltage, 1 = ESR, 2 = current
 //uint8_t sChartDisplayValueArrayType; // 0 = voltage, 1 = ESR, 2 = current - not yet implemented
 
@@ -2561,8 +2572,8 @@ void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
             tStringBuffer[6] = 'V';
             tStringBuffer[7] = '\0';
 //    strcat(tStringBuffer," V"); // 18 bytes longer
-            BlueDisplay1.drawText(VALUES_POSITION_X, VALUES_POSITION_Y, tStringBuffer, BASE_TEXT_SIZE * 2, CHART_VOLTAGE_COLOR,
-                    sBackgroundColor);
+            BlueDisplay1.drawText(VOLTAGE_POSITION_X, PROBE_VALUES_POSITION_Y, tStringBuffer, PROBE_VALUES_TEXT_SIZE,
+            CHART_VOLTAGE_COLOR, sBackgroundColor);
         }
 #endif
 
@@ -2638,11 +2649,11 @@ void printESR() {
         if (sTesterInfo.MeasurementState != STATE_SETUP_AND_READ_EEPROM && BlueDisplay1.isConnectionEstablished()) {
             char tString[8];
             if (tMilliohm == __UINT16_MAX__) {
-                BlueDisplay1.drawText(ESR_POSITION_X, VALUES_POSITION_Y, F("overflow"), BASE_TEXT_SIZE * 2,
+                BlueDisplay1.drawText(ESR_POSITION_X, PROBE_VALUES_POSITION_Y, F("overflow"), PROBE_VALUES_TEXT_SIZE,
                 CHART_ESR_COLOR, sBackgroundColor);
             } else {
                 snprintf_P(tString, sizeof(tString), PSTR("%4u m\x81"), tMilliohm);
-                BlueDisplay1.drawText(ESR_POSITION_X, VALUES_POSITION_Y, tString, BASE_TEXT_SIZE * 2, CHART_ESR_COLOR,
+                BlueDisplay1.drawText(ESR_POSITION_X, PROBE_VALUES_POSITION_Y, tString, PROBE_VALUES_TEXT_SIZE, CHART_ESR_COLOR,
                         sBackgroundColor);
             }
         }
@@ -2673,7 +2684,7 @@ void printESR() {
 /*
  * Is called each time counter changes
  * Print to the same LCD location as index counter for STATE_SAMPLE_AND_STORE_TO_EEPROM
- * Print on VALUES_POSITION_Y to enable complete clearing clearing at state change
+ * Print on PROBE_VALUES_POSITION_Y to enable complete clearing clearing at state change
  */
 void printCounterLCD_BD(uint16_t aNumberToPrint) {
 #if defined(USE_LCD)
@@ -2710,7 +2721,7 @@ void printCounterLCD_BD(uint16_t aNumberToPrint) {
          */
         char tString[4];
         snprintf_P(tString, sizeof(tString), PSTR("%3u"), aNumberToPrint);
-        BlueDisplay1.drawText(DISPLAY_WIDTH - BASE_TEXT_SIZE * 3, VALUES_POSITION_Y, tString, BASE_TEXT_SIZE, COLOR16_RED,
+        BlueDisplay1.drawText(DISPLAY_WIDTH - BASE_TEXT_SIZE * 3, PROBE_VALUES_POSITION_Y, tString, BASE_TEXT_SIZE, COLOR16_RED,
                 sBackgroundColor);
     }
 #endif
@@ -2743,8 +2754,8 @@ void printMilliampere4DigitsLCD_BD() {
         if ((!sInLoggerModeAndFlags || (sInLoggerModeAndFlags & LOGGER_EXTERNAL_CURRENT_DETECTED))
                 && BlueDisplay1.isConnectionEstablished()) {
             snprintf_P(tString, sizeof(tString), PSTR("%4u mA"), sBatteryOrLoggerInfo.Milliampere);
-            BlueDisplay1.drawText(VALUES_POSITION_X + (BASE_TEXT_SIZE * 10), VALUES_POSITION_Y, tString, BASE_TEXT_SIZE * 2,
-            CHART_CURRENT_COLOR, sBackgroundColor);
+            BlueDisplay1.drawText(CURRENT_POSITION_X, PROBE_VALUES_POSITION_Y, tString, PROBE_VALUES_TEXT_SIZE, CHART_CURRENT_COLOR,
+                    sBackgroundColor);
         }
 #endif
 #if defined(USE_LCD)
@@ -3286,13 +3297,16 @@ void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliam
 #    endif
 
     if (BlueDisplay1.isConnectionEstablished()) {
+        if (sChartReadValueArrayType == TYPE_NO_DATA) {
+            return;
+        }
 // input is millivolt convert to 20 for one volt
         if (sChartReadValueArrayType == TYPE_VOLTAGE) {
 // Voltage
             sChartValueArray[sChartValueArrayIndex] = (aMillivoltToPrint - sCompressionOffsetMillivolt) / sCompressionFactor;
         } else if (sChartReadValueArrayType == TYPE_ESR) {
             sChartValueArray[sChartValueArrayIndex] = (aMilliohmToPrint) / sCompressionFactor;
-        } else {
+        } else{
             // TYPE_CURRENT
             sChartValueArray[sChartValueArrayIndex] = (aMilliampereToPrint) / sCompressionFactor;
         }
@@ -3351,8 +3365,7 @@ void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliam
             }
             VoltageChart.drawChartDataWithYOffset(sChartValueArray, sChartValueArrayIndex, CHART_MODE_LINE);
         }
-    }
-    if (!BlueDisplay1.isConnectionEstablished())
+    } else
 #  endif // defined(SUPPORT_BLUEDISPLAY_CHART)
 
     { // new test is shorter than else!
@@ -3889,6 +3902,12 @@ void connectHandler(void) {
     initBatteryChart();
     sCurrentBrightness = BRIGHTNESS_LOW;
     changeBrightness(); // from low to high / user defined :-)
+    /*
+     * As redrawDisplay() does not initially read the max and min voltages for scaling,
+     * scaling may be incorrect after a long time without connection.
+     */
+    sChartReadValueArrayType = TYPE_NO_DATA;
+    readAndProcessEEPROMData(false); // first read the max and min voltages
     redrawDisplay();
 }
 
@@ -3903,6 +3922,10 @@ void redrawDisplay(void) {
 }
 
 void initDisplay(void) {
+#if defined ENABLE_DISPLAY_OF_DATE_AND_TIME
+    initLocalTimeHandling();
+#endif
+
 #if defined(LOCAL_DEBUG)
     Serial.print(F("InitDisplay: Host W x H="));
     Serial.print(BlueDisplay1.getHostDisplayWidth());
@@ -4008,7 +4031,7 @@ void initDisplay(void) {
     TouchButtonOnlyTextAmpere.setButtonTextColor(CHART_CURRENT_COLOR);
 
 // Settings for Text messages
-    BlueDisplay1.setWriteStringPosition(VALUES_POSITION_X, MESSAGE_START_POSITION_Y);
+    BlueDisplay1.setWriteStringPosition(PROBE_VALUES_POSITION_X, MESSAGE_START_POSITION_Y);
     BlueDisplay1.setWriteStringSizeAndColorAndFlag(sChartDataTextSize, sTextColor, sBackgroundColor, false);
 }
 
@@ -4191,6 +4214,10 @@ void readAndDrawEEPROMValues() {
     if (ValuesForDeltaStorage.DeltaArrayIndex > 0) {
         printChartValues();
     }
+#if defined ENABLE_DISPLAY_OF_DATE_AND_TIME
+    printTimeAtOneLine(BUTTONS_START_X, BlueDisplay1.getRequestedDisplayHeight() - BASE_TEXT_SIZE, (BASE_TEXT_SIZE * 2) / 3,
+    COLOR16_RED, sBackgroundColor);
+#endif
 }
 
 void printCapacityValue() {
@@ -4278,12 +4305,13 @@ void printChartValues() {
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, CHART_CURRENT_COLOR,
             sBackgroundColor);
 }
-
 #endif // defined(SUPPORT_BLUEDISPLAY_CHART)
 
 /*
  * Version 5.2 - 8/2025
  *  - Improved chart scaling.
+ *  - Display of date and time for BlueDisplay mode.
+ *  - Refactoring.
  *
  * Version 5.1 - 3/2025
  *  - Adaptive Chart data text size.

@@ -276,6 +276,15 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
+### Version 5.2
+- Improved chart scaling.
+- Display of date and time for BlueDisplay mode. This requires 1304 bytes program memory and does not work for plain Arduino, because the "-mrelax" linker option is not set.
+- Refactoring.
+
+Version 5.1
+- Adaptive Chart data text size.
+- Improved RunningState BDButton handling.
+
 ### Version 5.0.0
 - Compression is now done by simply doubling the sampling period, which results in reducing the resolution from 336 of 168 samples directly after compression.
 - Data and chart can be displayed on (old) tablets or mobile running the BlueDisplay app https://github.com/ArminJo/Arduino-BlueDisplay.
