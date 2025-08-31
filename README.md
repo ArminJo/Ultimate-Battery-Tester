@@ -27,16 +27,18 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 # Features
 - **Measures the ESR (equivalent series resistance) of the battery.** This is an indicator of the health of the battery.
 - **Stores voltage, current and ESR graph for up to 22 hours as well as capacity in EEPROM** while discharging.
+- The **voltage stored and displayed is the "no load" voltage**, and is therefore **independent of the ESR**, as is the capacity.
 - Current measurement or EEPROM stored measurement graph can be displayed with Arduino Plotter.
-- Display of no load voltage to be independence from load (resistor).
+- Display of no load voltage. This is to be independent from load resistor.
 - Easy **continuing of interrupted discharge measurements**.
 - Display of ESR, voltage, current and capacity on a **1602 LCD**.
 - Display of values and the **discharge graph on a tablet or mobile** running the [BlueDisplay](https://play.google.com/store/apps/details?id=de.joachimsmeyer.android.bluedisplay) app.
-- Computes "Standard" capacity between NominalFullVoltageMillivolt and SwitchOffVoltageMillivoltHigh to enable better comparison.
-- Selectable cutoff voltage `Standard`, `Low` and `Zero` (50 mV). E.g. for Li-ion the are 4.3 V and 3.0 V.
+- Computes **"Standard" capacity** between NominalFullVoltageMillivolt and SwitchOffVoltageMillivoltHigh to enable better comparison.
+- Selectable cutoff voltage `Standard`, `Low` and `Zero` (for research). E.g. for Li-ion they are 4.3 V, 3.0 V and 0.18 V.
 - Supports **2 different load resistors** for different battery voltages to keep current below 600 mA.
 - Supports battery voltages up to 20 volt (@5V Arduino VCC) and external load resistor e.g. for measuring of battery packs.
 - **Logger mode (voltage + current)** for charting external charger or similar devices.
+- If the ESR is changing a lot, the **load voltage** can be determined by looking at the current, because the load resistance is constant.
 
 <br/>
 
