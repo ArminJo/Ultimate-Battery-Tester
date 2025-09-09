@@ -278,12 +278,14 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
-### Version 5.2
+### Version 6.0.0
+- Improved logger handling.
 - Improved chart scaling.
 - Display of date and time for BlueDisplay mode. This requires 1304 bytes program memory and does not work for plain Arduino, because the "-mrelax" linker option is not set.
 - Refactoring.
+- Added battery specific zero value.
 
-Version 5.1
+### Version 5.1.0
 - Adaptive Chart data text size.
 - Improved RunningState BDButton handling.
 
