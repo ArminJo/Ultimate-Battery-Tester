@@ -2,7 +2,7 @@
  * BDTimeHelper.hpp
  *
  *  Utility functions to display the BlueDisplay timestamp provided by the BD Host in the Arduino program.
- *  !!! It requires the Arduino files Time.cpp and TimeLib.h and is therefore not a directly part of the BD library. It is only included in some of the examples !!!
+ *  !!! It requires the Arduino files Time.cpp and TimeLib.h, so it is not directly part of the BD library. It is only included in some of the examples !!!
  *  Requires up to 1640 bytes program memory and even more in Arduino IDE, because the "-mrelax" linker option is not set there.
  *
  *  Copyright (C) 2025  Armin Joachimsmeyer

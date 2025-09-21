@@ -258,24 +258,26 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
  * Take border as CO2_ARRAY_SIZE / 20, button width as  4 * CO2_ARRAY_SIZE / 20 and base font size as CO2_ARRAY_SIZE / 40
  */
 #define DISPLAY_WIDTH   ((MAX_NUMBER_OF_SAMPLES * 33L) / 20L) // 556
-#define BASE_TEXT_SIZE  (MAX_NUMBER_OF_SAMPLES / 20L) // 16
+#define BASE_TEXT_SIZE  (MAX_NUMBER_OF_SAMPLES / 20L) // 16 - #define TEXT_SIZE_16_HEIGHT 18, #define TEXT_SIZE_16_WIDTH 10
 #define BASE_TEXT_WIDTH ((((MAX_NUMBER_OF_SAMPLES / 20L) * 6 ) + 4) / 10) // 10
 #define BUTTON_WIDTH    (BASE_TEXT_SIZE * 5) // 80
 #define CHART_START_X   (BASE_TEXT_SIZE * 3) // 48
 #define CHART_WIDTH     (MAX_NUMBER_OF_SAMPLES + 1) // 337, +1 for the first sample at minute 0 -> 337, 5 hours and 36 min
+#define CHART_END_X     (CHART_START_X + CHART_WIDTH)
 #define CHART_AXES_SIZE (BASE_TEXT_SIZE / 8) // 2
-#define BUTTONS_START_X ((BASE_TEXT_SIZE * 4) + CHART_WIDTH)
+
+#define BUTTONS_START_X (CHART_END_X + BASE_TEXT_SIZE)
+
+#define CHART_VALUES_POSITION_X     (CHART_END_X)
 
 #define PROBE_VALUES_TEXT_SIZE      (BASE_TEXT_SIZE * 2)
-#define PROBE_VALUES_POSITION_Y     (BASE_TEXT_SIZE / 2)
 #define PROBE_VALUES_POSITION_X     (BASE_TEXT_SIZE * 2)
+#define PROBE_VALUES_POSITION_Y     (BASE_TEXT_SIZE / 2)
 #define MESSAGE_START_POSITION_Y    ((BASE_TEXT_SIZE * 2) + (BASE_TEXT_SIZE / 2))
 
 #define VOLTAGE_POSITION_X          (PROBE_VALUES_POSITION_X)
 #define ESR_POSITION_X              (PROBE_VALUES_POSITION_X + (BASE_TEXT_SIZE * 20))
 #define CURRENT_POSITION_X          (PROBE_VALUES_POSITION_X + (BASE_TEXT_SIZE * 10))
-
-#define CHART_VALUES_POSITION_X     (CHART_START_X + CHART_WIDTH)
 
 #define CHART_VOLTAGE_COLOR     COLOR16_RED
 #define CHART_ESR_COLOR         COLOR16_GREEN
@@ -860,25 +862,25 @@ void setup() {
 #  if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (!BlueDisplay1.isConnectionEstablished()) {
 #  endif
-    myLCD.setCursor(0, 1);
-    if (sOnlyPlotterOutput) {
-        myLCD.print(F("Only plotter out"));
-    } else {
-        myLCD.print(F("No plotter out  "));
-    }
-    delay(LCD_MESSAGE_PERSIST_TIME_MILLIS / 2);
+        myLCD.setCursor(0, 1);
+        if (sOnlyPlotterOutput) {
+            myLCD.print(F("Only plotter out"));
+        } else {
+            myLCD.print(F("No plotter out  "));
+        }
+        delay(LCD_MESSAGE_PERSIST_TIME_MILLIS / 2);
 
-    myLCD.setCursor(0, 1);
-    if (sTesterInfo.inLoggerModeAndFlags) {
+        myLCD.setCursor(0, 1);
+        if (sTesterInfo.inLoggerModeAndFlags) {
 #  if !defined(SUPPRESS_SERIAL_PRINT)
         if (!sOnlyPlotterOutput) {
             Serial.println(F("Only logger mode"));
         }
 #  endif
-        myLCD.print(F("Only logger mode"));
-        _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
-    }
-    LCDClearLine(1); // Clear line "No plotter out  " or "Only logger mode"
+            myLCD.print(F("Only logger mode"));
+            _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+        }
+        LCDClearLine(1); // Clear line "No plotter out  " or "Only logger mode"
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     }
 #endif
@@ -902,7 +904,7 @@ void setup() {
         readAndProcessEEPROMData(false);
     }
 #else
-    readAndProcessEEPROMData(true); // true, initialize data for append. Print, because SUPPORT_BLUEDISPLAY_CHART is not defined.
+    readAndProcessEEPROMData(true); // First call in setup() and parameter is true. Initialize data for append and print
 #endif
 
     printStoredDataLCD_BD();
@@ -2285,6 +2287,7 @@ void handlePeriodicAccumulatingLoggerValues() {
 
 /*
  * Maximal current for a 0.2 ohm shunt resistor is 5.5 A, and resolution is 5.4 mA.
+ * Maximal current for the 2 ohm battery shunt resistor is 550 mA, and resolution is 0.54 mA.
  */
 void getCurrent(uint8_t aADCChannel, uint16_t aShuntResistorMilliohm) {
     uint16_t tShuntVoltageRaw = waitAndReadADCChannelWithReference(aADCChannel, INTERNAL);
@@ -2692,7 +2695,7 @@ void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
 #if defined(USE_LCD)
         LCDResetCursor();
         LCDPrintAsFloatWith3Decimals(tVoltageNoLoadMillivolt);
-        myLCD.print(F("V "));
+        myLCD.print('V'); // no trailing space because of counters which can be more than 1000
         sTesterInfo.VoltageNoLoadIsDisplayedOnLCD = true;
 // cursor is now at 7, 0
 #endif
@@ -2800,7 +2803,7 @@ void printESR() {
  */
 void printCounterLCD_BD(uint16_t aNumberToPrint) {
 #if defined(USE_LCD)
-    myLCD.setCursor(6, 0); // in case voltage was not printed
+    myLCD.setCursor(6, 0); // for numbers up to 9999
 
     if (aNumberToPrint < 10) {
         /*
@@ -3288,7 +3291,9 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
                 tVoltageMillivolt += tEEPROMData.DeltaMillivolt;
                 tMilliampere += tEEPROMData.DeltaMilliampere;
                 tMilliohm += tEEPROMData.DeltaESRMilliohm;
-                // store resulting value
+                /*
+                 * recursive call to store resulting value
+                 */
                 storeBatteryValuesToEEPROM(tVoltageMillivolt, tMilliampere, tMilliohm);
             }
 
@@ -3573,8 +3578,7 @@ void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliam
  * - Print data for plotter and compute ESR on the fly from voltage, current and load resistor, if aStoreValuesForDisplayAndAppend is false.
  * - Compute capacity from current (if defined SUPPORT_CAPACITY_RESTORE).
  * - Compute max and min values in ValuesForChartScaling and store them AFTER the loop.
- * @param aStoreValuesForDisplayAndAppend  - if true (called at setup()), store initial data and if SUPPORT_BLUEDISPLAY_CHART, do not print.
- *                                         - if false, compute scaling data for chart display and print / display chart
+ * @param aInitializeValuesForDisplayAndAppend  - if true (called at setup()), store initial data and if SUPPORT_BLUEDISPLAY_CHART, do not print.
  */
 void readAndProcessEEPROMData(bool aInitializeValuesForDisplayAndAppend) {
     EEPROMData tEEPROMData;
@@ -3683,13 +3687,14 @@ void readAndProcessEEPROMData(bool aInitializeValuesForDisplayAndAppend) {
      * Print the initial value with no caption to plotter
      ****************************************************/
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-    if (!aInitializeValuesForDisplayAndAppend) {
+    if (!aInitializeValuesForDisplayAndAppend) {  // Check is only required for SUPPORT_BLUEDISPLAY_CHART
         printValuesForPlotterAndChart(tVoltageMillivolt, tMilliampere, tMilliohm, false);
+        Serial.println(); // for first line from printValuesForPlotterAndChart
     }
 #else
     printValuesForPlotterAndChart(tVoltageMillivolt, tMilliampere, tMilliohm, false); // print always at non BD mode
-#endif
     Serial.println(); // for first line from printValuesForPlotterAndChart
+#endif
 
     /*******************************************
      * Loop to read and print all EEPROM values
@@ -3791,35 +3796,34 @@ Serial.println();
          * At last, print the caption with values from the end of the measurement cycle to plotter
          */
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-        if (!aInitializeValuesForDisplayAndAppend) {
+        if (!aInitializeValuesForDisplayAndAppend) // Check is only required for SUPPORT_BLUEDISPLAY_CHART
+#endif
+        {
             printValuesForPlotterAndChart(tVoltageForPrint, tMilliampere, tMilliohm, i == (tFirstNonWrittenIndex - 1));
-        }
-#else
-        printValuesForPlotterAndChart(tVoltageForPrint, tMilliampere, tMilliohm, i == (tFirstNonWrittenIndex - 1)); // print always at non BD mode
-#endif
 
-#if !defined(SUPPRESS_SERIAL_PRINT)
-        if (!sOnlyPlotterOutput) {
-            if (tPrintDelayed == 1) {
-                Serial.print(F(" - Capacity on top of standard value="));
-                Serial.print(tCapacityAccumulator / tNumberOfEEPROMValuesPerHour);
-                Serial.print(F(" mAh"));
-            } else if (tPrintDelayed == 2) {
-                Serial.print(F(" - "));
-                if (sTesterInfo.isStandardCapacityAvailable) {
-                    Serial.print(F("Standard "));
+#if !defined(SUPPRESS_SERIAL_PRINT) // 270 bytes programming space
+            if (!sOnlyPlotterOutput) {
+                if (tPrintDelayed == 1) {
+                    Serial.print(F(" - Capacity on top of standard value="));
+                    Serial.print(tCapacityAccumulator / tNumberOfEEPROMValuesPerHour);
+                    Serial.print(F(" mAh"));
+                } else if (tPrintDelayed == 2) {
+                    Serial.print(F(" - "));
+                    if (sTesterInfo.isStandardCapacityAvailable) {
+                        Serial.print(F("Standard "));
+                    }
+                    if (sTesterInfo.inLoggerModeAndFlags) {
+                        Serial.print(F("capacity="));
+                    } else {
+                        Serial.print(F("capacity at high cut off="));
+                    }
+                    Serial.print(sTesterInfo.StandardCapacityMilliampereHour);
+                    Serial.print(F(" mAh"));
                 }
-                if (sTesterInfo.inLoggerModeAndFlags) {
-                    Serial.print(F("capacity="));
-                } else {
-                    Serial.print(F("capacity at high cut off="));
-                }
-                Serial.print(sTesterInfo.StandardCapacityMilliampereHour);
-                Serial.print(F(" mAh"));
             }
-        }
 #endif
-        Serial.println(); // for line from printValuesForPlotterAndChart plus optional tPrintDelayed text
+            Serial.println(); // for line from printValuesForPlotterAndChart plus optional tPrintDelayed text above
+        }
     } // End of read loop
 
     /**************************************************************************
@@ -4391,7 +4395,7 @@ void printCapacityValue() {
     } else {
         snprintf_P(tString, sizeof(tString), PSTR("%5u mAh        "), sBatteryOrLoggerInfo.CapacityMilliampereHour);
     }
-    BlueDisplay1.drawText(CHART_VALUES_POSITION_X, BlueDisplay1.getRequestedDisplayHeight() - (sChartDataTextSize * 9), tString,
+    BlueDisplay1.drawText(CHART_VALUES_POSITION_X, BlueDisplay1.getRequestedDisplayHeight() - ((sChartDataTextSize + 1) * 9), tString,
             sChartDataTextSize, sTextColor, sBackgroundColor);
 }
 
@@ -4400,7 +4404,8 @@ void printCapacityValue() {
  */
 void printChartValues() {
     char tStringBuffer[30];
-    uint16_t tYPosition = (BlueDisplay1.getRequestedDisplayHeight() - (sChartDataTextSize * 10));
+    uint_fast8_t tChartDataTextHeight = sChartDataTextSize + 1; // Quick hack to avoid deleting of top of character 'l' in Samples by capacity printing.
+    uint16_t tYPosition = (BlueDisplay1.getRequestedDisplayHeight() - (tChartDataTextHeight * 10));
 
 // Battery type
     const char *aBatteryTypePtr;
@@ -4418,7 +4423,7 @@ void printChartValues() {
 // Samples use 5u to have the same spacing as mAh
     snprintf(tStringBuffer, sizeof(tStringBuffer), "%5u Samples %u mn", ValuesForDeltaStorage.DeltaArrayIndex + 1,
             ChartStartValues.NumberOfSecondsPerStorage / SECONDS_IN_ONE_MINUTE_SHORT); // Samples + start sample
-    tYPosition += 2 * sChartDataTextSize;
+    tYPosition += 2 * tChartDataTextHeight;
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, sTextColor, sBackgroundColor);
 
 // Duration + VCC
@@ -4429,7 +4434,7 @@ void printChartValues() {
             tDurationMinutes % MINUTES_IN_ONE_HOUR_SHORT);
     dtostrf(sVCCVoltageMillivolt / 1000.0, 5, 2, &tStringBuffer[8]);
     tStringBuffer[13] = ' '; // overwrite terminating null
-    tYPosition += sChartDataTextSize;
+    tYPosition += tChartDataTextHeight;
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, sTextColor, sBackgroundColor);
 
 // Load and cutoff
@@ -4440,7 +4445,7 @@ void printChartValues() {
         snprintf(&tStringBuffer[5], sizeof(tStringBuffer), " \x81 Load   "); // strcat(tStringBuffer, " \x81 Load   ") requires more program space
     }
     tStringBuffer[14] = sBatteryOrLoggerInfo.CutoffLevelCharacter;
-    tYPosition += sChartDataTextSize;
+    tYPosition += tChartDataTextHeight;
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, sTextColor, sBackgroundColor);
 
 // Voltage
@@ -4448,7 +4453,7 @@ void printChartValues() {
     snprintf(&tStringBuffer[5], sizeof(tStringBuffer), " V ->      V");
     dtostrf(sLastChartData.Millivolt / 1000.0, 5, 2, &tStringBuffer[10]);
     tStringBuffer[15] = ' '; // overwrite terminating null
-    tYPosition += sChartDataTextSize;
+    tYPosition += tChartDataTextHeight;
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, CHART_VOLTAGE_COLOR,
             sBackgroundColor);
 
@@ -4456,7 +4461,7 @@ void printChartValues() {
     if (!ChartStartValues.inLoggerModeAndFlags) {
         snprintf(tStringBuffer, sizeof(tStringBuffer), "%5u m\x81->%4u m\x81", ChartStartValues.initialDischargingMilliohm,
                 sLastChartData.ESRMilliohm);
-        tYPosition += sChartDataTextSize;
+        tYPosition += tChartDataTextHeight;
         BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, CHART_ESR_COLOR,
                 sBackgroundColor);
     }
@@ -4464,7 +4469,7 @@ void printChartValues() {
 // Current
     snprintf(tStringBuffer, sizeof(tStringBuffer), "%5u mA->%4u mA", ChartStartValues.initialMilliampere,
             sLastChartData.Milliampere);
-    tYPosition += sChartDataTextSize;
+    tYPosition += tChartDataTextHeight;
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, CHART_CURRENT_COLOR,
             sBackgroundColor);
 }

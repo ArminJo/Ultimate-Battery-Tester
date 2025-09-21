@@ -113,8 +113,8 @@ The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module**
 | ![Used_Samsung_ICR18659-24B](pictures/Used_Samsung_ICR18659-24B.png) | ![Used_Samsung_ICR18659-24B_to_Zero](pictures/Used_Samsung_ICR18659-24B_to_Zero.png) |
 | Used Samsung ICR18659 24B with 1100 mAh. | The same Samsung ICR18659 24B **accidentally discharged to almost zero**. Here you can see the small capacity below 3.4 V. After directly recharging with 10 mA until 2.8 V and then with 30 mA to 3.5 V the capacity and ESR were like before, which I did not expect :-). |
 | | |
-| ![755590_4459mAh](pictures/755590_4459mAh.png) |  |
-| A new 755590 pouch cell with 4459mAh and an ESR of 0.14 &ohm;, maybe because of the protection circuit. |   |
+| ![INR18650MH1](pictures/INR18650MH1.png) | ![755590_4459mAh](pictures/755590_4459mAh.png) |
+| A LG INR18650MH1 cell salvaged from a scooter battery |  A new 755590 pouch cell with 4459mAh and an ESR of 0.14 &ohm;, maybe because of the protection circuit. |
 | | |
 
 <br/>
