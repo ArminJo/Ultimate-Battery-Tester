@@ -25,20 +25,20 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 <br/>
 
 # Features
-- **Measures the ESR (equivalent series resistance) of the battery.** This is an indicator of the health of the battery.
-- **Stores voltage, current and ESR graph for up to 22 hours as well as capacity in EEPROM** while discharging.
-- The **voltage stored and displayed is the "no load" voltage**, and is therefore **independent of the ESR**, as is the capacity.
-- Current measurement or EEPROM stored measurement graph can be displayed with Arduino Plotter.
-- Display of no load voltage. This is to be independent from load resistor.
+- **Measurement of the ESR (equivalent series resistance) of the battery.** This is an indicator of the health of the battery.
+- **Storing of voltage, current and ESR graph for up to 22 hours as well as capacity in EEPROM** while discharging.
+- The **stored and displayed voltage is the "no load" voltage**, and is therefore **independent of the ESR**, as is the capacity.
+- Current measurement values or complete EEPROM stored measurement graph can be displayed with **Arduino Plotter**.
 - Easy **continuing of interrupted discharge measurements**.
 - Display of ESR, voltage, current and capacity on a **1602 LCD**.
 - Display of values and the **discharge graph on a tablet or mobile** running the [BlueDisplay](https://play.google.com/store/apps/details?id=de.joachimsmeyer.android.bluedisplay) app.
-- Computes **"Standard" capacity** between NominalFullVoltageMillivolt and SwitchOffVoltageMillivoltHigh to enable better comparison.
+- Computing of **"Standard" capacity** between NominalFullVoltageMillivolt and SwitchOffVoltageMillivoltHigh to enable better comparison of capacity measurements.
 - Selectable cutoff voltage `Standard`, `Low` and `Zero` (for research). E.g. for Li-ion they are 4.3 V, 3.0 V and 0.18 V.
-- Supports **2 different load resistors** for different battery voltages to keep current below 600 mA.
-- Supports battery voltages up to 20 volt (@5V Arduino VCC) and external load resistor e.g. for measuring of battery packs.
+- Support of **2 different load resistors** for different battery voltages to keep current below 600 mA.
+- Support of **4 automatically selected voltage ranges** 2.2 V, 4.4 V, 17.6 V and 64.9 V. This results in a high resolution ranging from 2.1 mV to 63 mV.
+- Support of **external series load resistor** e.g. for measuring of battery packs.
 - **Logger mode (voltage + current)** for charting external charger or similar devices.
-- If the ESR is changing a lot, the **load voltage** can be determined by looking at the current, because the load resistance is constant.
+- In case the ESR is changing a lot, the **load voltage** can be determined by looking at the current, because the load resistance is constant.
 
 <br/>
 
@@ -96,8 +96,8 @@ By connecting pin 10 to ground, logger mode is entered after startup. Voltage is
 For current measurement in Logger mode, we use an separate external shunt connected at pin A4.<br/>
 To avoid disturbing the circuit in which we are measuring the current, this shunt is typically smaller than the shunt used in battery mode.
 Its value is defined by `LOGGER_SHUNT_RESISTOR_MILLIOHM`.<br/>
-Cutoff / end condition is, when current drops below 50%, 25% or 12.5% of start current. 
-12.5% is default and useful for logging charging circuits wich reduce current at the end of charge.
+Cutoff / end condition is, when current drops below 50%, 25% or 12.5% of start current.
+12.5% is default and useful for logging charging circuits which reduce current at the end of charge.
 
 <br/>
 
@@ -114,7 +114,7 @@ The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module**
 | Used Samsung ICR18659 24B with 1100 mAh. | The same Samsung ICR18659 24B **accidentally discharged to almost zero**. Here you can see the small capacity below 3.4 V. After directly recharging with 10 mA until 2.8 V and then with 30 mA to 3.5 V the capacity and ESR were like before, which I did not expect :-). |
 | | |
 | ![INR18650MH1](pictures/INR18650MH1.png) | ![755590_4459mAh](pictures/755590_4459mAh.png) |
-| A LG INR18650MH1 cell salvaged from a scooter battery |  A new 755590 pouch cell with 4459mAh and an ESR of 0.14 &ohm;, maybe because of the protection circuit. |
+| A LG INR18650MH1 cell salvaged from a scooter battery. |  A new 755590 pouch cell with 4459mAh and an ESR of 0.14 &ohm;, maybe because of the protection circuit. |
 | | |
 
 <br/>
@@ -138,7 +138,7 @@ Plot for a **NiMH cell** with 55 m&ohm; ESR.
 
 Plot of a NiMh battery sold as 4/5AA 1800mAh Ni-Mh showing only 960 mAh.
  ![1800mAh](pictures/1800NiMhBattery.png)
- 
+
 <br/>
 
 # Compile with the Arduino IDE
@@ -278,6 +278,9 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
+### Version 7.0.0
+- Changed analog pin assignments for two additional voltage ranges using internal reference.
+
 ### Version 6.0.0
 - Improved logger handling.
 - Improved chart scaling.

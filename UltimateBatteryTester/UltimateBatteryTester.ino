@@ -62,7 +62,7 @@
 
 #include "pitches.h"
 
-#define VERSION_EXAMPLE "6.0"
+#define VERSION_EXAMPLE "7.0"
 // The change log is at the bottom of the file
 
 //#define TRACE
@@ -75,7 +75,7 @@
  * For my Nanos I measured e.g. 1060 mV and 1093 mV.
  */
 #if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT)
-#define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100L // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
+#define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100UL // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
 
 /*
@@ -115,26 +115,41 @@
  *
  * Pin 2 / INT0 is used for Start/Stop button
  * Pin 3 to 8 are used for parallel LCD connection
+ * Pins A1 to A5 are used as digital outputs for range and load switching (and buzzer)
  */
-#define ADC_CHANNEL_FOR_VOLTAGE      0 // Pin A0 for Uno. This is the ADC channel, not the pin for voltage measurement!
-#define ADC_CHANNEL_CURRENT          1 // Pin A1 for Uno. This is the ADC channel, not the pin for current measurement!
-#define VOLTAGE_RANGE_EXTENSION_PIN A2 // This pin is low to extend the voltage range from 2.2 volt to 4.4 volt
-#define LOAD_HIGH_PIN               A3 // This pin is high to switch on the high load (3 ohm)
+#define ADC_CHANNEL_FOR_VOLTAGE          0 // Pin A0 / PC0 for Uno. This is the ADC channel, not the pin for voltage measurement!
+// the next Analog pins are used as digital outputs for range and load switching (and buzzer)
+#define VOLTAGE_RANGE_EXTENSION_1_PIN   A1 // PC1 This pin is low to extend the voltage range from 2.2 volt to 4.4 volt
+#define VOLTAGE_RANGE_EXTENSION_2_PIN   A2 // PC2 This pin is low to extend the voltage range from 2.2 volt to 17.6 volt
+#define VOLTAGE_RANGE_EXTENSION_3_PIN   A3 // PC3 This pin is low to extend the voltage range from 2.2 volt to  volt
+#define ADC_CHANNEL_CURRENT                     6 // Pin A6 for Nano. This is the ADC channel, not the pin for current measurement!
+#define ADC_CHANNEL_LOGGER_CURRENT              7 // Pin A7 for Nano. This is the ADC channel, not the pin for current measurement for Logger!
+#define HIGHEST_ASSEMBLED_VOLTAGE_RANGE_MASK    0x08 // A3 - This pin must be actually assembled with a resistor
+#define HIGHEST_ASSEMBLED_VOLTAGE_RANGE         3 // Channel
+#define LOWEST_VOLTAGE_RANGE_PORT_MASK_DUMMY    0x01 // Mask for PC0! not applied to hardware.
+#define VOLTAGE_RANGE_PORT_MASK                 0xE0 // PC1 to PC3
+
 #if defined(USE_PARALLEL_LCD)
-#define ADC_CHANNEL_LOGGER_CURRENT   4 // Pin A4 for Uno. This is the ADC channel, not the pin for current measurement for Logger!
-#define BUZZER_PIN                  A5
+#define LOAD_HIGH_PIN                           A4 // PC4 This pin is high to switch on the high load (3 ohm)
+#define LOAD_HIGH_PIN_MASK                      0x10 // Output PC4
+#define BUZZER_PIN                              A5 // PC5
+#define BUZZER_PIN_MASK                         0x20 // Output PC4
+#define OTHER_OUTPUTS_PIN_MASK                  (LOAD_HIGH_PIN_MASK | BUZZER_PIN_MASK)
+
 #else
 // USE_SERIAL_LCD here
 // A4 + A5, the hardware I2C pins on Arduino, are used for Serial LCD, so we must redefine this 2 pins
-#define ADC_CHANNEL_LOGGER_CURRENT   6 // Pin A6 for Nano, not available on Uno. This is the ADC channel, not the pin for current measurement for Logger!
-#define BUZZER_PIN                   3
-#endif
+#define LOAD_HIGH_PIN                           4 // This pin is high to switch on the high load (3 ohm)
+#define BUZZER_PIN                              3
+#define BUZZER_PIN_MASK                         0 // no Buzzer at Analog pins
+#define OTHER_OUTPUTS_PIN_MASK                  0 // Alternate functions for Pin 4 + 5
+#endif // defined(USE_PARALLEL_LCD)
 
 // Mode pins
 #define ONLY_PLOTTER_OUTPUT_PIN      9 // Verbose output to Arduino Serial Monitor is disabled, if connected to ground. This is intended for Arduino Plotter mode.
 #define ONLY_LOGGER_MODE_PIN        10 // If connected to ground, current is measured at the shunt at channel 4 / A4 and voltage still at channel 0 / pin A0.
 // If powered by USB verbose verbose output to Arduino Serial Monitor is disabled, if NOT connected to ground.
-#define CUTOFF_LEVEL_PIN            11 // If connected to ground, CUTOFF_LEVEL_LOW is taken as startup default if no battery is inserted.
+#define CUTOFF_LEVEL_PIN            11 // If connected to ground, CUTOFF_LEVEL_LOW is taken as startup default if no battery is inserted at startup.
 #define LOAD_LOW_PIN                12 // This pin is high to switch on the low load (10 ohm). A4 is occupied by I2C for serial LCD display.
 bool sLastValueOfCutoffLevelPin; // To support prints and voltage setting at changing between normal and low by using pin CUTOFF_LEVEL_PIN
 
@@ -149,8 +164,10 @@ bool sLastValueOfCutoffLevelPin; // To support prints and voltage setting at cha
 #endif
 #define LOAD_LOW_MILLIOHM                       (1000 + ESR_SHUNT_RESISTOR_MILLIOHM) // Additional 1 ohm
 #define LOAD_HIGH_MILLIOHM                      (10 * 1000 + ESR_SHUNT_RESISTOR_MILLIOHM) // Additional 10 ohm
-#define ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE    2L      // Divider with 100 kOhm and 100 kOhm -> 2.2 V range
-#define ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE   4L      // Divider with 100 kOhm and 33.333 kOhm -> 4.4 V range
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_0      2L      // Divider with 100 kOhm and 100 kOhm -> 2.2 V range
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_1      4L      // Divider with 100 kOhm and 33.333 kOhm -> 4.4 V range
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_2      16L     // Divider with 100 kOhm and 6.666 kOhm -> 17.6 V range
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_3      59L     // Divider with 100 kOhm and 1.7 kOhm -> 64.9 V range - 59 to avoid 16 bit overflow for ...Millivolt
 
 /*
  * Imports and definitions for start/stop button at pin 2
@@ -510,19 +527,18 @@ struct lastDiplayedValuesStruct {
     uint16_t CapacityMilliampereHour;
 } sLastDiplayedValues;
 
-uint8_t sLoggerADCVoltageReference = INTERNAL;  // INTERNAL or DEFAULT
 struct Logger1SecondAccumulatorStruct {
-    uint32_t RawVoltageAccumulator;    // normalized for 4.4 V range
-    uint32_t RawCurrentAccumulator;    // 16 bit is only OK up to 50 Hz
-    uint16_t RawSampleCount;           // Number of 769 samples. 20 for 20 HZ
+    uint32_t RawVoltageAccumulator; // normalized for 1.1 V range - maximum is 2 (AttenuationFactor) * 1023 (MaxRawVoltage) * 769 (samples) * 20 (Hz) = 31,467,480
+    uint32_t RawCurrentAccumulator;    // maximum is 1023 (MaxRawCurrent) * 769 (samples) * 20 (Hz) = 15,733,740
+    uint16_t RawSampleCount;           // Number of 769 samples. 20 for 20 Hz
     uint16_t MinimumRawVoltage;
     uint16_t MaximumRawVoltage;
 } sLogger1SecondAccumulator;
 
 struct Logger1MinuteAccumulatorStruct {
-    uint16_t RawSampleCount;          // Number of 769 samples. Is 1200 every minute for 20 HZ
-    uint32_t RawVoltageAccumulator8ShiftRight; // Unshifted maximum is 5000 * 769 * 20 * 60 = 6.921 billion => overflow at 12.2 Volt
-    uint32_t RawCurrentAccumulator;   // Unshifted maximum is 1023 * 769 * 20 * 60 = 1.416 billion
+    uint16_t RawSampleCount;          // Number of 769 samples. Is 1200 every minute for 20 Hz
+    uint32_t RawVoltageAccumulator8ShiftRight; // Unshifted maximum at 2.2 V range is 1023 (MaxRawVoltage) * 769 (samples) * 20 (Hz) * 60 (sec) = 944,024,400 => 8.8 V range would be OK for unshifted value
+    uint32_t RawCurrentAccumulator;  // Unshifted maximum is 1023 (MaxRawCurrent) * 769 (samples) * 20 (Hz) * 60 (sec) = 944,024,400
 } sLogger1MinuteAccumulator;
 
 /*
@@ -539,7 +555,8 @@ struct TesterInfoStruct {
     volatile uint8_t MeasurementState; // One of STATE_SETUP_AND_READ_EEPROM, STATE_WAITING_FOR_BATTERY_OR_EXTERNAL, STATE_INITIAL_SAMPLES etc.
     bool MeasurementWasFinishedByEndCondition; // true if stopped by detecting end condition and not by user button.
 
-    bool VoltageRangeIsLow;    // true for 2.2 V range
+    uint8_t VoltageRange;           // 0 to 3, for 2.2 V, 4.4 V, 17.6 V, x.x V and
+    uint8_t VoltageRangePortMask;   // 0x01 to 0x08, for 2.2 V, 4.4 V, 17.6 V, x.x V and
 
     /*
      * Standard capacity is from NominalFullVoltageMillivolt to CutoffVoltageMillivoltHigh.
@@ -632,7 +649,6 @@ struct ValuesForDeltaStorageStruct {
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
 // Must be below definition of MAX_NUMBER_OF_SAMPLES :-(
 uint8_t sChartValueArray[MAX_NUMBER_OF_SAMPLES] __attribute__((section(".noinit"))); // must be in noinit, to be first overwritten on stack overflow
-uint16_t sChartValueArrayIndex;
 struct ChartValuesStruct {
     uint16_t Millivolt;
     uint16_t Milliampere;
@@ -655,9 +671,10 @@ struct ValuesForChartScaling {
 #define CURRENT_DISPLAY_HYSTERESIS_MILLIAMPERE          1
 #define ESR_DISPLAY_HYSTERESIS_MILLIOHM                 1
 
-void getBatteryOrLoggerVoltageMillivolt();
+void getVoltageMillivolt();
 void addToCapacity();
-uint16_t getBatteryOrLoggerRawVoltage();
+uint8_t getVoltageAttenuationFactor();
+uint16_t getVoltageRaw();
 void setBatteryTypeIndex(uint8_t aBatteryTypeIndex);
 bool setBatteryTypeIndexFromVoltage(uint16_t aBatteryVoltageMillivolt);
 bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD();
@@ -670,7 +687,7 @@ void handlePeriodicAccumulatingLoggerValues();
 void getCurrent(uint8_t aADCChannel, uint16_t aShuntResistorMilliohm);
 void getBatteryValues();
 void checkAndHandleStopConditionLCD();
-bool isVoltageOrCurrentRemoved();
+void detectVoltageOrCurrentRemoved();
 void playEndTone();
 void playAttentionTone();
 void setLoad(uint8_t aNewLoadState);
@@ -679,8 +696,8 @@ bool printMilliampere4DigitsLCD_BD();
 void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
 void forceDisplayOfCurrentValues();
 void printMeasurementValuesLCD_BD();
-void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
-        bool aIsLastElement);
+void printChartAndPlotterGraph(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
+        uint16_t aChartValueArrayIndex, bool aIsLastElement);
 void printMillisValueAsFloat(uint16_t aValueInMillis);
 void printCounterLCD_BD(uint16_t aNumberToPrint);
 
@@ -713,8 +730,7 @@ void switchToStateSampleAndStoreToEEPROM(uint16_t aInitialSampleCountForStoring)
 void switchToStateStopped(char aReasonCharacter);
 
 #if defined(USE_LCD)
-void LCDPrintAsFloatWith2Decimals(uint16_t aValueInMillis);
-void LCDPrintAsFloatWith3Decimals(uint16_t aValueInMillis);
+void LCDPrintAsFloatAs5CharacterString(uint16_t aValueInMillivolts);
 void LCDPrintVCC(uint8_t aLCDLine);
 void LCDResetCursor();
 void LCDClearLine(uint8_t aLineNumber);
@@ -744,16 +760,18 @@ void _delay(unsigned long aDelayMillis) {
 
 void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
-    pinMode(LOAD_HIGH_PIN, OUTPUT);
     pinMode(LOAD_LOW_PIN, OUTPUT);
     pinMode(ONLY_PLOTTER_OUTPUT_PIN, INPUT_PULLUP);
     pinMode(CUTOFF_LEVEL_PIN, INPUT_PULLUP);
     pinMode(ONLY_LOGGER_MODE_PIN, INPUT_PULLUP);
     setLoad(NO_LOAD);
 
-    // Pin settings for sTesterInfo.VoltageRangeIsLow = false;
-    pinMode(VOLTAGE_RANGE_EXTENSION_PIN, OUTPUT);
-    digitalWrite(VOLTAGE_RANGE_EXTENSION_PIN, LOW);
+    // Settings for highest voltage range
+    pinMode(VOLTAGE_RANGE_EXTENSION_3_PIN, OUTPUT);
+    sTesterInfo.VoltageRangePortMask = HIGHEST_ASSEMBLED_VOLTAGE_RANGE_MASK;
+    sTesterInfo.VoltageRange = HIGHEST_ASSEMBLED_VOLTAGE_RANGE;
+    PORTC = 0; // All A0 to A5 pins are initial low, if activated as outputs
+    DDRC = HIGHEST_ASSEMBLED_VOLTAGE_RANGE_MASK | OTHER_OUTPUTS_PIN_MASK; // Set attenuator pin to output
 
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     initSerial(BLUETOOTH_BAUD_RATE); // converted to Serial.begin(BLUETOOTH_BAUD_RATE);
@@ -924,7 +942,7 @@ void setup() {
      * If battery is still inserted, keep cut off level read from EEPROM data for easy append.
      * If battery was removed, cut off level can be chosen by pressing stop button.
      */
-    getBatteryOrLoggerVoltageMillivolt();
+    getVoltageMillivolt();
     if (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt < NO_BATTERY_MILLIVOLT) {
         // Battery / Logger is removed here, so start with cutoff value determined by pin
         sBatteryOrLoggerInfo.BatteryTypeIndex = TYPE_INDEX_NO_BATTERY; // Required for correct CutoffVoltage
@@ -1010,9 +1028,7 @@ void loop() {
                  * else display values
                  */
                 if (sTesterInfo.MeasurementState == STATE_INITIAL_SAMPLES) {
-                    if (isVoltageOrCurrentRemoved()) {
-                        switchToStateWaitingForBatteryOrVoltage(); // switch back to start and do not overwrite already displayed values
-                    }
+                    detectVoltageOrCurrentRemoved();
                 }
                 // check again for not removing detected
                 if (sTesterInfo.MeasurementState != STATE_WAITING_FOR_BATTERY_OR_EXTERNAL) {
@@ -1065,6 +1081,7 @@ void getOnlyPlotterOutputPinLevel() {
 
 /*
  * Check for VCC undervoltage during measurements
+ * isVCCUndervoltageMultipleTimes() checks VCC only every 10 seconds
  */
 void checkAndHandleVCCUndervoltage() {
     if (sTesterInfo.MeasurementState != STATE_STOPPED && isVCCUndervoltageMultipleTimes()) {
@@ -1079,6 +1096,10 @@ void checkAndHandleVCCUndervoltage() {
         playEndTone(); // 3 seconds
         switchToStateStopped('U');
     }
+    /*
+     * Reset ADC reference source to internal 1.1 V
+     */
+    checkAndWaitForReferenceAndChannelToSwitch(ADC_CHANNEL_CURRENT, INTERNAL);
 }
 /*
  * Check if battery was inserted or voltage connected.
@@ -1455,12 +1476,15 @@ void LCDClearLine(uint8_t aLineNumber) {
     myLCD.setCursor(0, aLineNumber);
 }
 
-void LCDPrintAsFloatWith3Decimals(uint16_t aValueInMillis) {
-    myLCD.print(((float) (aValueInMillis)) / 1000, 3);
-}
-
-void LCDPrintAsFloatWith2Decimals(uint16_t aValueInMillis) {
-    myLCD.print(((float) (aValueInMillis)) / 1000, 2);
+/*
+ * Use 2 decimals, if value is >= 10
+ */
+void LCDPrintAsFloatAs5CharacterString(uint16_t aValueInMillivolts) {
+    if (aValueInMillivolts < 10000) {
+        myLCD.print(((float) (aValueInMillivolts)) / 1000, 3);
+    } else {
+        myLCD.print(((float) (aValueInMillivolts)) / 1000, 2);
+    }
 }
 
 /*
@@ -1703,6 +1727,7 @@ void printButtonUsageMessageLCD() {
          * and wait for 2 seconds for button press
          */
         delayAndCheckForButtonPress();
+        myLCD.clear();
     }
 #endif
 }
@@ -1897,20 +1922,13 @@ void setLoad(uint8_t aNewLoadState) {
 /*
  * Set NoLoadMillivolt or LoadMillivolt depending on sBatteryOrLoggerInfo.LoadState
  */
-void getBatteryOrLoggerVoltageMillivolt() {
-
-    uint16_t tInputVoltageRaw = getBatteryOrLoggerRawVoltage();
+void getVoltageMillivolt() {
+    uint16_t tInputVoltageRaw = getVoltageRaw();
     /*
-     * Compute voltage
+     * Compute voltage from RawVoltage and AttenuationFactor
      */
-    uint16_t tCurrentBatteryVoltageMillivolt;
-    if (sTesterInfo.VoltageRangeIsLow) {
-        tCurrentBatteryVoltageMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT * ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE)
-                * tInputVoltageRaw) / 1023);
-    } else {
-        tCurrentBatteryVoltageMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT * ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE)
-                * tInputVoltageRaw) / 1023);
-    }
+    uint16_t tCurrentBatteryVoltageMillivolt = (((uint32_t) (ADC_INTERNAL_REFERENCE_MILLIVOLT * getVoltageAttenuationFactor())
+            * tInputVoltageRaw) / 1023);
 
     if (sBatteryOrLoggerInfo.LoadState == NO_LOAD) {
         sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt = tCurrentBatteryVoltageMillivolt;
@@ -1920,98 +1938,118 @@ void getBatteryOrLoggerVoltageMillivolt() {
 
 #if defined(LOCAL_TRACE)
     if (!sOnlyPlotterOutput) {
+        Serial.print(F("VoltageRaw="));
+        Serial.print(tInputVoltageRaw);
+        Serial.print(F(" Range="));
+        Serial.print(sTesterInfo.VoltageRange);
+        Serial.print(F(" AttenuationFactor="));
+        Serial.print(getVoltageAttenuationFactor());
+        Serial.print(F(" -> "));
         Serial.print(tCurrentBatteryVoltageMillivolt);
         Serial.println(F(" mV"));
     }
 #endif
 }
 
-void setToLowVoltageRange() {
-    sTesterInfo.VoltageRangeIsLow = true;
-    pinMode(VOLTAGE_RANGE_EXTENSION_PIN, INPUT);
-    digitalWrite(VOLTAGE_RANGE_EXTENSION_PIN, LOW);
-#if defined(LOCAL_TRACE)
-    if (!sOnlyPlotterOutput) {
-        Serial.println(F(" -> switch to 2.2 V range"));
-    }
+uint8_t getVoltageAttenuationFactor() {
+    uint8_t tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_0; // Factor 2, 2.2 V range
+    if (sTesterInfo.VoltageRange == 1) {
+        tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_1;
+#if HIGHEST_ASSEMBLED_VOLTAGE_RANGE >= 2
+    } else if (sTesterInfo.VoltageRange == 2) {
+        tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_2;
+#  if HIGHEST_ASSEMBLED_VOLTAGE_RANGE >= 3
+    } else if (sTesterInfo.VoltageRange == 3) {
+        tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_3;
+#  endif
 #endif
+    }
+    return tVoltageAttenuationFactor;
 }
 
-void setToHighVoltageRange() {
-    sTesterInfo.VoltageRangeIsLow = false;
-    pinMode(VOLTAGE_RANGE_EXTENSION_PIN, OUTPUT);
-    digitalWrite(VOLTAGE_RANGE_EXTENSION_PIN, LOW);    // required???
-#if defined(LOCAL_TRACE)
-    if (!sOnlyPlotterOutput) {
-        Serial.println(F(" -> switch to 4.4 V range"));
-    }
-#endif
-}
 /*
  * Sets NoLoadMillivolt or LoadMillivolt
  * Provides automatic range switch between 2.2, 4.4 and 14 (up to 20 with 5V VCC) volt range
- * The ranges are realized by a divider with 100 kOhm and 100 kOhm -> 2.2 V range and a divider with 100 kOhm and 33.333 kOhm -> 4.4 v range
- * The 14 (20) volt range is realized by using the 4.4 volt range with VCC (of at least 3.5 volt) as reference.
- * With 5 volt VCC this range goes up to 20 volt resulting in a raw value of 4651
+ * The ranges are realized by a
+ * divider with 100 kOhm and 100 kOhm -> 2.2 V range and 2.15 mV resolution
+ * divider with 100 kOhm and 33.333 kOhm (3 * 100 kOhm parallel) -> 4.4 V range and 4.3 mV resolution
+ * divider with 100 kOhm and 6.666 kOhm (15 * 100 kOhm parallel or 100k + 10k + (10+15k) parallel) -> 17.6 V range and 17 mV resolution
+ * divider with 100 kOhm and 1,71 kOhm (100k + 1.8k + 52k parallel) -> 64.9V range and 63 mV resolution
  * Does not affect the loads
  */
-uint16_t getBatteryOrLoggerRawVoltage() {
-    uint16_t tInputVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_FOR_VOLTAGE, INTERNAL);
+uint16_t getVoltageRaw() {
+    setADCChannelForNextConversionAndWaitUsingInternalReference(ADC_CHANNEL_FOR_VOLTAGE);
+    uint16_t tInputVoltageRaw = readADCChannel();
+    bool tCheckAgainForRangeDecrease = true;
     /*
      * Automatic range
+     * First check if we have an overflow and can increase the range
+     * Second check if we have an underflow and can decrease the range
      */
-    if (sTesterInfo.VoltageRangeIsLow && tInputVoltageRaw >= 0x3F0) { // 1008
-// switch to higher voltage range by activating the range extension resistor at pin A2
-#if defined(LOCAL_TRACE)
+    while (tInputVoltageRaw >= 0x3F0 && sTesterInfo.VoltageRange < HIGHEST_ASSEMBLED_VOLTAGE_RANGE) { // 1008
+        // switch to higher voltage range - 600 us per switch
+        sTesterInfo.VoltageRangePortMask <<= 1; // Shift to next attenuator pin
+        DDRC = sTesterInfo.VoltageRangePortMask | OTHER_OUTPUTS_PIN_MASK; // Set bit for A1/PC1 to A3/PC3
+        sTesterInfo.VoltageRange++;
+        tCheckAgainForRangeDecrease = false;
+        // no wait, since last reading was same channel, same reference
+        tInputVoltageRaw = readADCChannel();
+#if defined(LOCAL_DEBUG)
         if (!sOnlyPlotterOutput) {
-            Serial.print(F("VoltageRaw="));
-            Serial.print(tInputVoltageRaw);
+            Serial.print(F("Range++="));
+            Serial.print(sTesterInfo.VoltageRange);
+            Serial.print(F(", VoltageRaw="));
+            Serial.println(tInputVoltageRaw);
         }
 #endif
-        setToHighVoltageRange(); // 4.4 V range
-        // no wait, since last reading was same channel, same reference
-        tInputVoltageRaw = readADCChannelWithReference(ADC_CHANNEL_FOR_VOLTAGE, INTERNAL);
     }
-    if (!sTesterInfo.VoltageRangeIsLow) {
-        if (tInputVoltageRaw < (((0x3F0L * ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE) / ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE) - 0x10)) {
-            // switch to lower voltage range at values below 488 by deactivating the range extension resistor at pin A2
-#if defined(LOCAL_TRACE)
-            if (!sOnlyPlotterOutput) {
-                Serial.print(F("VoltageRaw="));
-                Serial.print(tInputVoltageRaw);
+
+    while (tCheckAgainForRangeDecrease) {
+        if (sTesterInfo.VoltageRange == 1) {
+            tCheckAgainForRangeDecrease = false;
+            // Here we have factor 2 between attenuator range 2.2 V and 4.4 V
+            if (tInputVoltageRaw < (((0x3F0L * ATTENUATION_FACTOR_VOLTAGE_RANGE_0) / ATTENUATION_FACTOR_VOLTAGE_RANGE_1) - 0x10)) {
+                // switch to lowest (2.2 V) voltage range at values below 488 in 4.4 V range by deactivating all range extension resistors
+                sTesterInfo.VoltageRange = 0;
+                sTesterInfo.VoltageRangePortMask = LOWEST_VOLTAGE_RANGE_PORT_MASK_DUMMY; // Dummy in order to be able to shift for higher attenuator factors
+                DDRC = OTHER_OUTPUTS_PIN_MASK; // Set bit for A1/PC1 to A3/PC3
+                tInputVoltageRaw = readADCChannel();
             }
-#endif
-            setToLowVoltageRange(); // 2.2 V range
-            tInputVoltageRaw = readADCChannelWithReference(ADC_CHANNEL_FOR_VOLTAGE, INTERNAL);
-        } else if (tInputVoltageRaw >= 0x3F0) {
+        } else {
             /*
-             * Here we have 17 mV resolution
-             * which leads to e.g. 0.3 ohm resolution at 9V and 60 mA
+             * Here we have factor 4 between attenuator ranges
+             * Voltage range 3 -> 3; (x.x V) -> (17.6 V)
+             * Voltage range 2 -> 1; (17.6 V) -> (4.4 V)
              */
-#if defined(LOCAL_TRACE)
-            if (!sOnlyPlotterOutput) {
-                Serial.print(F("Switch to "));
-                Serial.print((sVCCVoltageMillivolt * ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE) / 1000.0, 3);
-                Serial.println(F(" V range"));
+            while (tInputVoltageRaw < (((0x3F0L * ATTENUATION_FACTOR_VOLTAGE_RANGE_1) / ATTENUATION_FACTOR_VOLTAGE_RANGE_2) - 0x10)
+                    && sTesterInfo.VoltageRange > 1) {
+                sTesterInfo.VoltageRangePortMask >>= 1; // Shift to next attenuator pin
+                DDRC = sTesterInfo.VoltageRangePortMask | OTHER_OUTPUTS_PIN_MASK; // Set bit for A1/PC1 to A3/PC3
+                sTesterInfo.VoltageRange--;
+                // no wait, since last reading was same channel, same reference
+                tInputVoltageRaw = readADCChannel();
+#if defined(LOCAL_DEBUG)
+                if (!sOnlyPlotterOutput) {
+                    Serial.print(F("Range--="));
+                    Serial.print(sTesterInfo.VoltageRange);
+                    Serial.print(F(", VoltageRaw="));
+                    Serial.println(tInputVoltageRaw);
+                }
+#endif
             }
-#endif
-// switch to highest voltage range by using VCC as reference
-            uint16_t tReadoutFor1_1Reference = waitAndReadADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT); // 225 at 5 volt VCC
-            tInputVoltageRaw = waitAndReadADCChannelWithReference(ADC_CHANNEL_FOR_VOLTAGE, DEFAULT);
-#if defined(LOCAL_TRACE)
-            Serial.print(tInputVoltageRaw);
-            Serial.print(F(" / "));
-            Serial.println(tReadoutFor1_1Reference);
-#endif
-            // Adjust tInputVoltageRaw to a virtual 12.5 bit range based at voltage range high
-            tInputVoltageRaw = (tInputVoltageRaw * 1023L) / tReadoutFor1_1Reference;
+            if (sTesterInfo.VoltageRange != 1) {
+                tCheckAgainForRangeDecrease = false; // no need to check for underflow for range 1
+            }
         }
     }
 #if defined(LOCAL_TRACE)
     Serial.print(F("VoltageRaw="));
     Serial.print(tInputVoltageRaw);
-    Serial.print(F(" isLow="));
-    Serial.println(sTesterInfo.VoltageRangeIsLow);
+    Serial.print(F(" Range="));
+    Serial.print(sTesterInfo.VoltageRange);
+    Serial.print(F(" Mask=0x"));
+    Serial.print(sTesterInfo.VoltageRangePortMask, HEX);
+    Serial.println();
 #endif
     return tInputVoltageRaw;
 }
@@ -2037,9 +2075,6 @@ void clearLogger1MinuteAccumulator() {
     sLogger1MinuteAccumulator.RawVoltageAccumulator8ShiftRight = 0;
     sLogger1MinuteAccumulator.RawCurrentAccumulator = 0;
     sLogger1MinuteAccumulator.RawSampleCount = 0;
-// start every minute with new range selection
-    setToLowVoltageRange();
-    sLoggerADCVoltageReference = INTERNAL;
     sBatteryOrLoggerInfo.Voltages.Logger.MinimumMillivolt = UINT16_MAX;
     sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt = 0;
 }
@@ -2067,19 +2102,13 @@ void getLogger1SecondValues() {
      * Compute voltage and avoid overflow
      * >> 8 and * 4 in divisor are a fast and short way to divide by 1024
      */
-    sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt =
-            ((ADC_INTERNAL_REFERENCE_MILLIVOLT * (sLogger1SecondAccumulator.RawVoltageAccumulator >> 8))
-                    / ((LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4)
-                            / ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE));
-//    This gives overflow :-(
-//    sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT * ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE)
-//            * (uint32_t) sLogger1SecondAccumulator.RawVoltageAccumulator >> 8)
-//            / (LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4L));
+    sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt = ((sLogger1SecondAccumulator.RawVoltageAccumulator >> 8)
+            / ((LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4) / ADC_INTERNAL_REFERENCE_MILLIVOLT));
 
-    sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT
-            * ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE) * (uint32_t) sLogger1SecondAccumulator.MaximumRawVoltage) / 1024L);
-    sBatteryOrLoggerInfo.Voltages.Logger.MinimumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT
-            * ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE) * (uint32_t) sLogger1SecondAccumulator.MinimumRawVoltage) / 1024L);
+    sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT)
+            * (uint32_t) sLogger1SecondAccumulator.MaximumRawVoltage) / 1024L);
+    sBatteryOrLoggerInfo.Voltages.Logger.MinimumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT)
+            * (uint32_t) sLogger1SecondAccumulator.MinimumRawVoltage) / 1024L);
 
 #if defined(LOCAL_TRACE)
     Serial.print(F("cnt="));
@@ -2100,8 +2129,7 @@ void getLogger1SecondValues() {
     Serial.print(sLogger1SecondAccumulator.MaximumRawVoltage);
     Serial.print(F(", Uav="));
     Serial.print(sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt);
-    Serial.print(F(" mV Range="));
-    Serial.println(sTesterInfo.VoltageRangeIsLow);
+    Serial.println(F(" mV"));
 #endif
 
     clearLogger1SecondAccumulator();
@@ -2120,23 +2148,21 @@ void getLogger1MinuteValues() {
      */
     sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt = (ADC_INTERNAL_REFERENCE_MILLIVOLT
             * (sLogger1MinuteAccumulator.RawVoltageAccumulator8ShiftRight >> 8))
-            / (((uint32_t) sLogger1MinuteAccumulator.RawSampleCount * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT)
-                    / (ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE * 64));
+            / (((uint32_t) sLogger1MinuteAccumulator.RawSampleCount * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT) / 64);
 
 #if defined(LOCAL_TRACE)
-    Serial.println();
-    Serial.print(F("cnt="));
-    Serial.print(sLogger1MinuteAccumulator.RawSampleCount);
-    Serial.print(F(" Iacc="));
-    Serial.print(sLogger1MinuteAccumulator.RawCurrentAccumulator);
-    Serial.print(' ');
-    Serial.print(sBatteryOrLoggerInfo.Milliampere);
-    Serial.print(F(" mA, Uacc="));
-    Serial.print(sLogger1MinuteAccumulator.RawVoltageAccumulator8ShiftRight);
-    Serial.print(' ');
-    Serial.print(sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt);
-    Serial.print(F(" mV l="));
-    Serial.println(sTesterInfo.VoltageRangeIsLow);
+Serial.println();
+Serial.print(F("cnt="));
+Serial.print(sLogger1MinuteAccumulator.RawSampleCount);
+Serial.print(F(" Iacc="));
+Serial.print(sLogger1MinuteAccumulator.RawCurrentAccumulator);
+Serial.print(' ');
+Serial.print(sBatteryOrLoggerInfo.Milliampere);
+Serial.print(F(" mA, Uacc="));
+Serial.print(sLogger1MinuteAccumulator.RawVoltageAccumulator8ShiftRight);
+Serial.print(' ');
+Serial.print(sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt);
+Serial.println(F(" mV"));
 #endif
 
     clearLogger1MinuteAccumulator();
@@ -2155,7 +2181,7 @@ void handlePeriodicAccumulatingLoggerValues() {
 #if defined(LOCAL_TRACE)
 //        uint8_t tOldADMUX =
 #endif
-        checkAndWaitForReferenceAndChannelToSwitch(ADC_CHANNEL_LOGGER_CURRENT, INTERNAL);
+        setADCChannelForNextConversionAndWaitUsingInternalReference(ADC_CHANNEL_LOGGER_CURRENT);
         /*
          * Read 769 current values in 20ms.
          * maximum value of readADCChannelWithReferenceAndPrescalerMultiSamples(...769) is 800 000
@@ -2166,21 +2192,19 @@ void handlePeriodicAccumulatingLoggerValues() {
         digitalWrite(LED_BUILTIN, LOW);
         sLogger1SecondAccumulator.RawCurrentAccumulator += tRawCurrentValue;
 #if defined(LOCAL_TRACE)
-        if (!sOnlyPlotterOutput) {
+    if (!sOnlyPlotterOutput) {
 //            Serial.print(F("OldADMUX=0x"));
 //            Serial.print(tOldADMUX, HEX);
-            Serial.print(F(" AVGRawCurrent="));
-            Serial.println(tRawCurrentValue / LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT);
-        }
+        Serial.print(F(" AVGRawCurrent="));
+        Serial.println(tRawCurrentValue / LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT);
+    }
 #endif
 
         /*
          * Read 769 voltage values in 20 ms
-         * Set external voltage divider and ADC reference.
-         * For voltages > 4.4 V, reference must be switched to VCC and back at next current measurement.
          * tRawVoltageValue is normalized for a value of 1023 at 4.4 V.
          */
-        waitAndReadADCChannelWithReference(ADC_CHANNEL_FOR_VOLTAGE, sLoggerADCVoltageReference);
+        getVoltageRaw(); // this handles automatic range setting
 
         uint32_t tRawVoltageValue;
         uint16_t tInputMinimumRawVoltage;
@@ -2206,38 +2230,10 @@ void handlePeriodicAccumulatingLoggerValues() {
 
             // Add value
             uint16_t tInputRawVoltage = ADCL | (ADCH << 8);
-            if (tInputRawVoltage >= 0x3F0) { // 1008
-                if (sTesterInfo.VoltageRangeIsLow) {
-                    // switch to higher voltage range by activating the range extension resistor at pin A2
-                    setToHighVoltageRange();
-                } else if (sLoggerADCVoltageReference == INTERNAL) {
-                    // here we have the 4.4 V range and must switch to VCC reference
-                    sLoggerADCVoltageReference = DEFAULT;
-                    checkAndWaitForReferenceAndChannelToSwitch(ADC_CHANNEL_FOR_VOLTAGE, DEFAULT);
-#if defined(LOCAL_TRACE)
-                if (!sOnlyPlotterOutput) {
-                    Serial.print(F("Switch to "));
-                    Serial.print((sVCCVoltageMillivolt * ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE) / 1000.0, 3);
-                    Serial.println(F(" V range"));
-                }
-#endif
-                } else {
-                    // Voltage once too high for 4.4 V divider and VCC as reference
-#if defined(LOCAL_TRACE)
-                if (!sOnlyPlotterOutput) {
-                    Serial.println(F("overvoltage"));
-                }
-#endif
-                    tRawVoltageValue = 0x3FF * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT; // put maximum value in tRawVoltageValue
-                    break;
-                }
-                // Start a full new loop after changing input range
-                i = 0;
-                delayMicroseconds(52); // wait for 2 conversions to be gone after changing range
-                continue;
-            } // End of range check (tInputRawVoltage >= 0x3F0)
-
             tRawVoltageValue += tInputRawVoltage;
+            /*
+             * Find minimum and maximum
+             */
             if (tInputMinimumRawVoltage > tInputRawVoltage) {
                 tInputMinimumRawVoltage = tInputRawVoltage;
             }
@@ -2248,18 +2244,13 @@ void handlePeriodicAccumulatingLoggerValues() {
         }
         ADCSRA &= ~_BV(ADATE); // Disable auto-triggering (free running mode)
 
-// normalize to 1023 at 4.4 V
-        if (sTesterInfo.VoltageRangeIsLow) {
-            tRawVoltageValue /= (ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE / ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE); // divide by 2
-            tInputMaximumRawVoltage /= (ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE / ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE); // divide by 2
-            tInputMinimumRawVoltage /= (ATTENUATION_FACTOR_VOLTAGE_HIGH_RANGE / ATTENUATION_FACTOR_VOLTAGE_LOW_RANGE); // divide by 2
-        } else if (sLoggerADCVoltageReference == DEFAULT) {
-            // Adjust tInputVoltageRaw to a virtual 12.5 bit range -> maximum value is 5000 for 20 V
-            uint16_t tReadoutFor1_1Reference = waitAndReadADCChannelWithReference(ADC_1_1_VOLT_CHANNEL_MUX, DEFAULT); // 225 at 5 volt VCC
-            tRawVoltageValue = (tRawVoltageValue * 1023L) / tReadoutFor1_1Reference;
-            tInputMaximumRawVoltage = (tInputMaximumRawVoltage * 1023L) / tReadoutFor1_1Reference;
-            tInputMinimumRawVoltage = (tInputMinimumRawVoltage * 1023L) / tReadoutFor1_1Reference;
-        }
+        /*
+         * Normalize to 1.1 V
+         */
+        auto tVoltageAttenuationFactor = getVoltageAttenuationFactor();
+        tRawVoltageValue *= tVoltageAttenuationFactor;
+        tInputMaximumRawVoltage *= tVoltageAttenuationFactor;
+        tInputMinimumRawVoltage *= tVoltageAttenuationFactor;
 
         sLogger1SecondAccumulator.RawVoltageAccumulator += tRawVoltageValue;
         if (sLogger1SecondAccumulator.MaximumRawVoltage < tInputMaximumRawVoltage) {
@@ -2290,17 +2281,18 @@ void handlePeriodicAccumulatingLoggerValues() {
  * Maximal current for the 2 ohm battery shunt resistor is 550 mA, and resolution is 0.54 mA.
  */
 void getCurrent(uint8_t aADCChannel, uint16_t aShuntResistorMilliohm) {
-    uint16_t tShuntVoltageRaw = waitAndReadADCChannelWithReference(aADCChannel, INTERNAL);
+    setADCChannelForNextConversionAndWaitUsingInternalReference(aADCChannel);
+    uint16_t tShuntVoltageRaw = readADCChannel();
     sBatteryOrLoggerInfo.Milliampere = (((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) * tShuntVoltageRaw)
             / (1023L * aShuntResistorMilliohm));
 #if defined(LOCAL_TRACE)
-    Serial.print(F("Ch "));
-    Serial.print(aADCChannel);
-    Serial.print(F(", Raw="));
-    Serial.print(tShuntVoltageRaw);
-    Serial.print(F(", "));
-    Serial.print(sBatteryOrLoggerInfo.Milliampere);
-    Serial.println(F(" mA"));
+Serial.print(F("Ch "));
+Serial.print(aADCChannel);
+Serial.print(F(", Raw="));
+Serial.print(tShuntVoltageRaw);
+Serial.print(F(", "));
+Serial.print(sBatteryOrLoggerInfo.Milliampere);
+Serial.println(F(" mA"));
 #endif
 }
 
@@ -2320,7 +2312,7 @@ void getCurrent(uint8_t aADCChannel, uint16_t aShuntResistorMilliohm) {
 void getBatteryValues() {
 // Do it before deactivating the load
     getCurrent(ADC_CHANNEL_CURRENT, ESR_SHUNT_RESISTOR_MILLIOHM);
-    getBatteryOrLoggerVoltageMillivolt();    // get current battery load voltage (no load in case of stopped)
+    getVoltageMillivolt(); // get current battery load voltage (no load in case of stopped)
 
     if (sTesterInfo.MeasurementState == STATE_STOPPED) return; // thats all if stopped :-)
 
@@ -2329,18 +2321,21 @@ void getBatteryValues() {
     setLoad(NO_LOAD);
     digitalWrite(LED_BUILTIN, HIGH);
     delay(sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis);
-    getBatteryOrLoggerVoltageMillivolt();    // get current battery NoLoadMillivolt
+    getVoltageMillivolt(); // get current battery NoLoadMillivolt
 // restore original load state
     setLoad(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].LoadType);
     digitalWrite(LED_BUILTIN, LOW);
 
-    /*
-     * ESR computation
-     */
-    sBatteryOrLoggerInfo.ESRDeltaMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt
-            - sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt;
-
     if (sBatteryOrLoggerInfo.Milliampere > 1) {
+        if (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt >= sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt) {
+            /*
+             * ESR computation
+             */
+            sBatteryOrLoggerInfo.ESRDeltaMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt
+                    - sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt;
+        } else {
+            sBatteryOrLoggerInfo.ESRDeltaMillivolt = 0;
+        }
         /*
          * Compute sESRAverage
          * Shift history array to end and insert current value at [0]
@@ -2351,8 +2346,8 @@ void getBatteryValues() {
             if (sESRHistory[i - 1] != 0) {
                 // shift i-1 to i and add to average
 #if defined(LOCAL_TRACE)
-                Serial.print(sESRHistory[i - 1]);
-                Serial.print('+');
+            Serial.print(sESRHistory[i - 1]);
+            Serial.print('+');
 #endif
                 tESRAverageHistoryCounter++; // count only valid entries
                 tESRAverageAccumulator += sESRHistory[i - 1];
@@ -2366,17 +2361,25 @@ void getBatteryValues() {
         } else {
             sESRHistory[0] = tESRMilliohm;
         }
+#if defined(LOCAL_TRACE)
+    Serial.print(tESRMilliohm);
+    Serial.print('=');
+    Serial.print(sBatteryOrLoggerInfo.ESRDeltaMillivolt);
+    Serial.print(F("*1000/"));
+    Serial.print(sBatteryOrLoggerInfo.Milliampere);
+    Serial.println();
+#endif
 
         tESRAverageAccumulator += sESRHistory[0];
         sBatteryOrLoggerInfo.ESRMilliohm = (tESRAverageAccumulator + (tESRAverageHistoryCounter / 2)) / tESRAverageHistoryCounter;
 
 #if defined(LOCAL_TRACE)
-        Serial.print(sESRHistory[0]);
-        Serial.print('/');
-        Serial.print(tESRAverageHistoryCounter);
-        Serial.print('=');
-        Serial.print(sBatteryOrLoggerInfo.ESRMilliohm);
-        Serial.println();
+    Serial.print(sESRHistory[0]);
+    Serial.print('/');
+    Serial.print(tESRAverageHistoryCounter);
+    Serial.print('=');
+    Serial.print(sBatteryOrLoggerInfo.ESRMilliohm);
+    Serial.println();
 #endif
 
         /*
@@ -2421,30 +2424,6 @@ void playAttentionTone() {
     delay(100);
     tone(BUZZER_PIN, NOTE_C7, 40);
     delay(100);
-}
-
-/*
- * Check for no current or voltage below NO_BATTERY_MILLIVOLT
- * @return true if removed
- */
-bool isVoltageOrCurrentRemoved() {
-// check only if battery was inserted before
-    if (((sBatteryOrLoggerInfo.Milliampere == 0 /* no current */
-    && (!sTesterInfo.inLoggerModeAndFlags || (sTesterInfo.inLoggerModeAndFlags & LOGGER_EXTERNAL_CURRENT_DETECTED)))
-            || (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt < NO_BATTERY_MILLIVOLT /* no voltage */
-            && (!sTesterInfo.inLoggerModeAndFlags || (sTesterInfo.inLoggerModeAndFlags & LOGGER_EXTERNAL_VOLTAGE_DETECTED))))) {
-#if !defined(SUPPRESS_SERIAL_PRINT_FOUND_REMOVING_CONDITION) // around 100 bytes program space
-        if (!sOnlyPlotterOutput) {
-            Serial.print(F("Battery or voltage removing detected. U="));
-            Serial.print(sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt);
-            Serial.print(F(" mV I="));
-            Serial.print(sBatteryOrLoggerInfo.Milliampere);
-            Serial.println(F(" mA"));
-        }
-#endif
-        return true;
-    }
-    return false;
 }
 
 /*
@@ -2541,12 +2520,12 @@ void setBatteryTypeIndex(uint8_t aBatteryTypeIndex) {
     setCutoffHighLowZeroButtonTextAndDrawButton();
 #endif
 #if defined(LOCAL_TRACE)
-    Serial.print(F(" Battery index="));
-    Serial.print(aBatteryTypeIndex);
-    Serial.print(F(" SwitchOffVoltageMillivolt="));
-    Serial.print(sBatteryOrLoggerInfo.CutoffVoltageMillivolt);
-    Serial.print(F(" LoadSwitchSettleTimeMillis="));
-    Serial.println(sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis);
+Serial.print(F(" Battery index="));
+Serial.print(aBatteryTypeIndex);
+Serial.print(F(" SwitchOffVoltageMillivolt="));
+Serial.print(sBatteryOrLoggerInfo.CutoffVoltageMillivolt);
+Serial.print(F(" LoadSwitchSettleTimeMillis="));
+Serial.println(sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis);
 #endif
 }
 /*
@@ -2575,7 +2554,7 @@ bool setBatteryTypeIndexFromVoltage(uint16_t aBatteryVoltageMillivolt) {
  * @return true, if battery or logger voltage and current detected
  */
 bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
-    getBatteryOrLoggerVoltageMillivolt(); // sets sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt
+    getVoltageMillivolt(); // sets sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt
 
     bool tBatteryOrCurrentOrVoltageWasDetected = false;
     if (sTesterInfo.inLoggerModeAndFlags) {
@@ -2617,7 +2596,7 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
         /*
          * Battery type detection here
          */
-        sBatteryOrLoggerInfo.Milliampere = 0; // avoid display old current value
+        sBatteryOrLoggerInfo.Milliampere = 0; // Avoid the display of the old current value
         if (setBatteryTypeIndexFromVoltage(sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt)) {
             /*
              * BatteryTypeIndex changed here
@@ -2663,6 +2642,41 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
     return tBatteryOrCurrentOrVoltageWasDetected;
 }
 
+/*
+ * Check for no current or voltage below NO_BATTERY_MILLIVOLT
+ * @return true if removed
+ */
+void detectVoltageOrCurrentRemoved() {
+// check only if battery was inserted before
+    if (((sBatteryOrLoggerInfo.Milliampere == 0 /* no current */
+    && (!sTesterInfo.inLoggerModeAndFlags || (sTesterInfo.inLoggerModeAndFlags & LOGGER_EXTERNAL_CURRENT_DETECTED)))
+            || (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt < NO_BATTERY_MILLIVOLT /* no voltage */
+            && (!sTesterInfo.inLoggerModeAndFlags || (sTesterInfo.inLoggerModeAndFlags & LOGGER_EXTERNAL_VOLTAGE_DETECTED))))) {
+        if (sTesterInfo.NumbersOfInitialSamplesToGo == NUMBER_OF_INITIAL_SAMPLES) {
+            // no current after voltage detection, discharge resistor not connected?
+#if defined(USE_LCD)
+            myLCD.setCursor(0, 1);
+            myLCD.print(F("No current ! "));
+            _delay(2 * LCD_MESSAGE_PERSIST_TIME_MILLIS);
+#endif
+            if (!sOnlyPlotterOutput) {
+                Serial.println(F("No current, discharge resistor not connected?"));
+            }
+        } else {
+#if !defined(SUPPRESS_SERIAL_PRINT_FOUND_REMOVING_CONDITION) // around 100 bytes program space
+            if (!sOnlyPlotterOutput) {
+                Serial.print(F("Battery or voltage removing detected. U="));
+                Serial.print(sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt);
+                Serial.print(F(" mV I="));
+                Serial.print(sBatteryOrLoggerInfo.Milliampere);
+                Serial.println(F(" mA"));
+            }
+#endif
+        }
+        switchToStateWaitingForBatteryOrVoltage(); // switch back to start and do not overwrite already displayed values
+    }
+}
+
 void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
     uint16_t tVoltageNoLoadMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt; // saves 12 bytes programming space
 
@@ -2694,7 +2708,7 @@ void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
 
 #if defined(USE_LCD)
         LCDResetCursor();
-        LCDPrintAsFloatWith3Decimals(tVoltageNoLoadMillivolt);
+        LCDPrintAsFloatAs5CharacterString(tVoltageNoLoadMillivolt);
         myLCD.print('V'); // no trailing space because of counters which can be more than 1000
         sTesterInfo.VoltageNoLoadIsDisplayedOnLCD = true;
 // cursor is now at 7, 0
@@ -2704,7 +2718,7 @@ void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
 
 void printCapacity5DigitsLCD_BD() {
 #if !defined(SUPPRESS_SERIAL_PRINT)
-    // Print no newline
+// Print no newline
     if (!sOnlyPlotterOutput) {
         Serial.print(F("capacity="));
         Serial.print(sBatteryOrLoggerInfo.CapacityMilliampereHour);
@@ -2776,7 +2790,7 @@ void printESR() {
 #if defined(USE_LCD)
         myLCD.setCursor(0, 1);
         if (sTesterInfo.inLoggerModeAndFlags) {
-            LCDPrintAsFloatWith3Decimals(sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt);
+            LCDPrintAsFloatAs5CharacterString(sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt);
             myLCD.print(F("V"));
         } else {
             float tOhmFloat;
@@ -2804,6 +2818,10 @@ void printESR() {
 void printCounterLCD_BD(uint16_t aNumberToPrint) {
 #if defined(USE_LCD)
     myLCD.setCursor(6, 0); // for numbers up to 9999
+// snprintf_P requires 46 bytes more program space :-(
+//    char tString[5];
+//    snprintf_P(tString, sizeof(tString), PSTR("%4"), aNumberToPrint);
+//    myLCD.print(tString);
 
     if (aNumberToPrint < 10) {
         /*
@@ -2823,10 +2841,10 @@ void printCounterLCD_BD(uint16_t aNumberToPrint) {
     }
     myLCD.print(aNumberToPrint);
 #else
-    // only beep here
-    if (sTesterInfo.MeasurementState == STATE_INITIAL_SAMPLES && aNumberToPrint < 10) {
-        tone(BUZZER_PIN, 2000, 40);
-    }
+// only beep here
+if (sTesterInfo.MeasurementState == STATE_INITIAL_SAMPLES && aNumberToPrint < 10) {
+    tone(BUZZER_PIN, 2000, 40);
+}
 #endif
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (sTesterInfo.MeasurementState == STATE_INITIAL_SAMPLES && BlueDisplay1.isConnectionEstablished()) {
@@ -2925,13 +2943,13 @@ void printStoredDataLCD_BD() {
  * STATE_INITIAL_SAMPLES:
  * "4.030 V, 27 s  329 mA at 11.896 ohm, ESR=0.329 ohm, 0.108 V"
  *  0   4   8   C  F
- * "4.030V 18  329mA" printing down counter
- * "0.061o l  0.128V" using current ESR from sESRHistory[0]
+ * "4.030V 18  329mA" NoLoadMillivolt, NumbersOfInitialSamplesToGo, Milliampere
+ * "0.061o l  0.128V" ESRMilliohm (from sESRHistory[0]), CutoffLevelCharacter, ESRDeltaMillivolt
  *
  * STATE_SAMPLE_AND_STORE_TO_EEPROM:
  * "4.030 V,  329 mA at 11.949 ohm, ESR=0.329 ohm, capacity=1200 mAh
  *  0   4   8   C  F
- * "4.030V 312 329mA" printing EEPROM array index
+ * "4.030V 312 329mA" NoLoadMillivolt, DeltaArrayIndex + 1, Milliampere
  * "0.392o l 1200mAh" using sBatteryOrLoggerInfo.ESRMilliohm
  *
  * Called with states STATE_SETUP_AND_READ_EEPROM, STATE_INITIAL_SAMPLES and STATE_SAMPLE_AND_STORE_TO_EEPROM
@@ -2959,7 +2977,7 @@ void printMeasurementValuesLCD_BD() {
              */
             if (sTesterInfo.inLoggerModeAndFlags
 // @formatter:off
-                    || sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt >= sLastDiplayedValues.VoltageNoLoadMillivolt
+                        || sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt >= sLastDiplayedValues.VoltageNoLoadMillivolt
 // @formatter:on
                     || (sLastDiplayedValues.VoltageNoLoadMillivolt - sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt)
                             <= MAX_VOLTAGE_DROP_MILLIVOLT_FOR_COUNTDOWN) {
@@ -3062,7 +3080,7 @@ void printMeasurementValuesLCD_BD() {
 #  endif
 #  if defined(USE_LCD)
                 myLCD.print(F("  ")); // leading spaces only for voltage
-                LCDPrintAsFloatWith3Decimals(tESRDeltaMillivolt);
+                LCDPrintAsFloatAs5CharacterString(tESRDeltaMillivolt);
                 myLCD.print(F("V"));
 #  endif
             }
@@ -3155,15 +3173,15 @@ int8_t clipDelta(int32_t aDelta) {
  */
 void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMilliampere, uint16_t aMilliohm) {
 #if defined(LOCAL_DEBUG)
-    Serial.print(F("Store "));
-    Serial.print(aVoltageNoLoadMillivolt);
-    Serial.print(F("mV, "));
-    Serial.print(aMilliampere);
-    Serial.print(F("mA, "));
-    Serial.print(aMilliohm);
-    Serial.print(F("mOhm at "));
-    Serial.print(ValuesForDeltaStorage.DeltaArrayIndex);
-    Serial.println();
+Serial.print(F("Store "));
+Serial.print(aVoltageNoLoadMillivolt);
+Serial.print(F("mV, "));
+Serial.print(aMilliampere);
+Serial.print(F("mA, "));
+Serial.print(aMilliohm);
+Serial.print(F("mOhm at "));
+Serial.print(ValuesForDeltaStorage.DeltaArrayIndex);
+Serial.println();
 #endif
     if (ValuesForDeltaStorage.DeltaArrayIndex < 0) {
         ValuesForDeltaStorage.DeltaArrayIndex = 0;
@@ -3192,13 +3210,13 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
         eeprom_update_block(&ChartStartValues, &EEPROMStartValues, sizeof(EEPROMStartValues));
 
 #if defined(LOCAL_TRACE)
-        dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
+    dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
 #endif
 #if defined(LOCAL_DEBUG)
-        if (!sOnlyPlotterOutput) {
-            Serial.print(F("Store initial values to EEPROM at 0x"));
-            Serial.println((uint16_t) &EEPROMStartValues, HEX);
-        }
+    if (!sOnlyPlotterOutput) {
+        Serial.print(F("Store initial values to EEPROM at 0x"));
+        Serial.println((uint16_t) &EEPROMStartValues, HEX);
+    }
 #endif
 
         /*
@@ -3232,19 +3250,19 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
         eeprom_update_block(&tDeltas, &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex], sizeof(tDeltas));
 
 #if defined(LOCAL_DEBUG)
-        Serial.print(F("EEPROM values at 0x"));
-        Serial.print((uint16_t) &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex], HEX);
-        Serial.print(F(" ="));
-        Serial.print(tDeltas.DeltaMillivolt);
-        Serial.print(' ');
-        Serial.print(tDeltas.DeltaMilliampere);
-        Serial.print(' ');
-        Serial.print(tDeltas.DeltaESRMilliohm);
-        Serial.println();
+    Serial.print(F("EEPROM values at 0x"));
+    Serial.print((uint16_t) &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex], HEX);
+    Serial.print(F(" ="));
+    Serial.print(tDeltas.DeltaMillivolt);
+    Serial.print(' ');
+    Serial.print(tDeltas.DeltaMilliampere);
+    Serial.print(' ');
+    Serial.print(tDeltas.DeltaESRMilliohm);
+    Serial.println();
 #endif
 #if defined(LOCAL_TRACE)
-        // dump 2 lines containing the 3 byte data
-        dumpEEPROM((uint8_t*) ((uint16_t) &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex] & 0xFFF0), 2);
+    // dump 2 lines containing the 3 byte data
+    dumpEEPROM((uint8_t*) ((uint16_t) &EEPROMDataArray[ValuesForDeltaStorage.DeltaArrayIndex] & 0xFFF0), 2);
 #endif
 
         ValuesForDeltaStorage.DeltaArrayIndex++; // increase every sample
@@ -3254,12 +3272,12 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
          */
         if ((unsigned int) ValuesForDeltaStorage.DeltaArrayIndex >= MAX_NUMBER_OF_SAMPLES) {
 #if defined(LOCAL_DEBUG)
-            if (!sOnlyPlotterOutput) {
-                Serial.println();
-                Serial.print(F("Compress "));
-                Serial.print(MAX_NUMBER_OF_SAMPLES);
-                Serial.println(F(" stored values"));
-            }
+        if (!sOnlyPlotterOutput) {
+            Serial.println();
+            Serial.print(F("Compress "));
+            Serial.print(MAX_NUMBER_OF_SAMPLES);
+            Serial.println(F(" stored values"));
+        }
 #endif
             /************************************************************************
              * COMPRESSION
@@ -3311,10 +3329,10 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
             ChartStartValues.NumberOfSecondsPerStorage *= 2;
             eeprom_update_byte(&EEPROMStartValues.NumberOfSecondsPerStorage, ChartStartValues.NumberOfSecondsPerStorage); // store value in EEPROM
 #if defined(LOCAL_TRACE)
-            if (!sOnlyPlotterOutput) {
-                Serial.println(F("Conversion done"));
-                Serial.println();
-            }
+        if (!sOnlyPlotterOutput) {
+            Serial.println(F("Conversion done"));
+            Serial.println();
+        }
 #endif
         }
     }
@@ -3363,7 +3381,7 @@ void storeCapacityAndCutoffLevelToEEPROM_LCD() {
     _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
 #if defined(LOCAL_DEBUG)
-    dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
+dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
 #endif
 }
 
@@ -3373,54 +3391,55 @@ void storeCapacityAndCutoffLevelToEEPROM_LCD() {
  * We then get an ESR of 0.109 ohm for 339 mA and 0.073 ohm for 340 mA :-(.
  *
  * no println() at the end, to enable appending of text like " - Capacity on top of standard value=..."
+ * @param aChartValueArrayIndex  The index of sChartValueArray where the current processed EEPROM value is written to
  * @param aIsLastElement    If true, print BlueDisplay chart or Arduino plotter caption
  */
-void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
-        bool aIsLastElement) {
+void printChartAndPlotterGraph(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
+        uint16_t aChartValueArrayIndex, bool aIsLastElement) {
 #if defined(ARDUINO_2_0_PLOTTER_FORMAT)
-            Serial.print(F("Voltage:"));
-            Serial.print(aMillivoltToPrint);
-            Serial.print(F(" Current:"));
-            Serial.print(aMilliampereToPrint);
-            Serial.print(F(" ESR:"));
-            Serial.print(aMilliohmToPrint);
-            if (aDoPrintSummary) {
-                // Print updated plotter caption
-                Serial.print(F(" Voltage="));
-                printMillisValueAsFloat(ChartStartValues.initialMillivolt);
-                Serial.print(F("V->"));
-                printMillisValueAsFloat(aMillivoltToPrint);
-                Serial.print(F("V__Current="));
-                Serial.print(ChartStartValues.initialMilliampere);
-                Serial.print(F("mA->"));
-                Serial.print(aMilliampereToPrint);
-                Serial.print(F("mA__ESR="));
-                Serial.print(ChartStartValues.initialDischargingMilliohm);
-                Serial.print(F("mOhm->"));
-                Serial.print(aMilliohmToPrint);
-                Serial.print(F("mOhm___LoadResistor="));
-                printMillisValueAsFloat(ChartStartValues.LoadResistorMilliohm);
-                Serial.print(F("ohm__Capacity="));
-                Serial.print(sBatteryOrLoggerInfo.CapacityMilliampereHour);
-                Serial.print(F("mAh__Duration="));
-                // We have 2 4bit values per storage byte
-                uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex)
-                * (2 * INITIAL_NUMBER_OF_SAMPLES_PER_STORAGE)/ SECONDS_IN_ONE_MINUTE;
-                Serial.print(tDurationMinutes / MINUTES_IN_ONE_HOUR_SHORT);
-                Serial.print(F("h_"));
-                Serial.print(tDurationMinutes % MINUTES_IN_ONE_HOUR_SHORT);
-                Serial.print(F("min:aMillivoltToPrint"));
-            }
+Serial.print(F("Voltage:"));
+Serial.print(aMillivoltToPrint);
+Serial.print(F(" Current:"));
+Serial.print(aMilliampereToPrint);
+Serial.print(F(" ESR:"));
+Serial.print(aMilliohmToPrint);
+if (aDoPrintSummary) {
+    // Print updated plotter caption
+    Serial.print(F(" Voltage="));
+    printMillisValueAsFloat(ChartStartValues.initialMillivolt);
+    Serial.print(F("V->"));
+    printMillisValueAsFloat(aMillivoltToPrint);
+    Serial.print(F("V__Current="));
+    Serial.print(ChartStartValues.initialMilliampere);
+    Serial.print(F("mA->"));
+    Serial.print(aMilliampereToPrint);
+    Serial.print(F("mA__ESR="));
+    Serial.print(ChartStartValues.initialDischargingMilliohm);
+    Serial.print(F("mOhm->"));
+    Serial.print(aMilliohmToPrint);
+    Serial.print(F("mOhm___LoadResistor="));
+    printMillisValueAsFloat(ChartStartValues.LoadResistorMilliohm);
+    Serial.print(F("ohm__Capacity="));
+    Serial.print(sBatteryOrLoggerInfo.CapacityMilliampereHour);
+    Serial.print(F("mAh__Duration="));
+    // We have 2 4bit values per storage byte
+    uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex)
+    * (2 * INITIAL_NUMBER_OF_SAMPLES_PER_STORAGE)/ SECONDS_IN_ONE_MINUTE;
+    Serial.print(tDurationMinutes / MINUTES_IN_ONE_HOUR_SHORT);
+    Serial.print(F("h_"));
+    Serial.print(tDurationMinutes % MINUTES_IN_ONE_HOUR_SHORT);
+    Serial.print(F("min:aMillivoltToPrint"));
+}
 #else //  defined(ARDUINO_2_0_PLOTTER_FORMAT)
 #  if defined(SUPPORT_BLUEDISPLAY_CHART)
 
 #    if defined(LOCAL_TRACE)
-    Serial.print(F("ChartReadValueArrayType="));
-    Serial.print(sChartReadValueArrayType);
-    Serial.print(F(" ChartValueArrayIndex="));
-    Serial.print(sChartValueArrayIndex);
-    Serial.print(F(" IsLastElement="));
-    Serial.println(aIsLastElement);
+Serial.print(F("ChartReadValueArrayType="));
+Serial.print(sChartReadValueArrayType);
+Serial.print(F(" ChartValueArrayIndex="));
+Serial.print(aChartValueArrayIndex);
+Serial.print(F(" IsLastElement="));
+Serial.println(aIsLastElement);
 #    endif
 
     if (BlueDisplay1.isConnectionEstablished()) {
@@ -3430,23 +3449,22 @@ void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliam
 // input is millivolt convert to 20 for one volt
         if (sChartReadValueArrayType == TYPE_VOLTAGE) {
 // Voltage
-            sChartValueArray[sChartValueArrayIndex] = (aMillivoltToPrint - sCompressionOffsetMillivolt) / sCompressionFactor;
+            sChartValueArray[aChartValueArrayIndex] = (aMillivoltToPrint - sCompressionOffsetMillivolt) / sCompressionFactor;
         } else if (sChartReadValueArrayType == TYPE_ESR) {
-            sChartValueArray[sChartValueArrayIndex] = (aMilliohmToPrint) / sCompressionFactor;
+            sChartValueArray[aChartValueArrayIndex] = (aMilliohmToPrint) / sCompressionFactor;
         } else {
             // TYPE_CURRENT
-            sChartValueArray[sChartValueArrayIndex] = (aMilliampereToPrint) / sCompressionFactor;
+            sChartValueArray[aChartValueArrayIndex] = (aMilliampereToPrint) / sCompressionFactor;
         }
 
-        sChartValueArrayIndex++;
         if (aIsLastElement) {
 #    if defined(LOCAL_DEBUG)
-            Serial.println();
-            Serial.print(F("ChartReadValueArrayType="));
-            Serial.print(sChartReadValueArrayType);
-            Serial.print(F(" sCompressionFactor="));
-            Serial.print(sCompressionFactor);
-            Serial.println();
+        Serial.println();
+        Serial.print(F("ChartReadValueArrayType="));
+        Serial.print(sChartReadValueArrayType);
+        Serial.print(F(" sCompressionFactor="));
+        Serial.print(sCompressionFactor);
+        Serial.println();
 #    endif
             if (sChartReadValueArrayType == TYPE_VOLTAGE) {
                 sLastChartData.Millivolt = aMillivoltToPrint;
@@ -3456,18 +3474,18 @@ void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliam
                  * factors:  6   4   3   2  1.5   1      1.5    1  1.5    1
                  * Labels:  10  15  20  30  40 1:00     1:20 2:00 2:40 4:00
                  */
-                int16_t tXScaleFactor = VoltageChart.computeXLabelAndXDataScaleFactor(sChartValueArrayIndex);
+                int16_t tXScaleFactor = VoltageChart.computeXLabelAndXDataScaleFactor(aChartValueArrayIndex);
 #    if defined(LOCAL_TRACE)
-                Serial.println();
-                Serial.print(F("ChartValueArrayIndex="));  // Current length of chart
-                Serial.print(sChartValueArrayIndex);
-                Serial.print(F(" WidthX="));
-                Serial.print(VoltageChart.mWidthX);
-                Serial.print(F(" XLabelBaseIncrementValue="));
-                Serial.print(VoltageChart.mXLabelBaseIncrementValue);
-                Serial.print(F(" XDataScaleFactor="));
-                Serial.print(VoltageChart.mXDataScaleFactor);
-                Serial.println();
+            Serial.println();
+            Serial.print(F("ChartValueArrayIndex="));  // Current length of chart
+            Serial.print(aChartValueArrayIndex);
+            Serial.print(F(" WidthX="));
+            Serial.print(VoltageChart.mWidthX);
+            Serial.print(F(" XLabelBaseIncrementValue="));
+            Serial.print(VoltageChart.mXLabelBaseIncrementValue);
+            Serial.print(F(" XDataScaleFactor="));
+            Serial.print(VoltageChart.mXDataScaleFactor);
+            Serial.println();
 #    endif
                 float tChartMinutesPerLabelUncompressed = CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED; // 30
                 uint8_t tXGridOrLabelPixelSpacing = CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED;
@@ -3490,8 +3508,8 @@ void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliam
                 VoltageChart.setXLabelBaseIncrementValue(
                         (ChartStartValues.NumberOfSecondsPerStorage / SECONDS_IN_ONE_MINUTE) * tChartMinutesPerLabelUncompressed); // Starts with CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED (30) for 1 minute sampling
 #else
-                VoltageChart.setXLabelBaseIncrementValue(
-                        (ChartStartValues.NumberOfSecondsPerStorage * tChartMinutesPerLabelUncompressed) / SECONDS_IN_ONE_MINUTE); // Starts with CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED (30) for 1 minute sampling
+            VoltageChart.setXLabelBaseIncrementValue(
+                    (ChartStartValues.NumberOfSecondsPerStorage * tChartMinutesPerLabelUncompressed) / SECONDS_IN_ONE_MINUTE); // Starts with CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED (30) for 1 minute sampling
 #endif
 
                 clearAndDrawChart(); // now the axes parameter are set, draw axes and grid and caption
@@ -3501,7 +3519,10 @@ void printValuesForPlotterAndChart(uint16_t aMillivoltToPrint, uint16_t aMilliam
                 // TYPE_CURRENT
                 sLastChartData.Milliampere = aMilliampereToPrint;
             }
-            VoltageChart.drawChartDataWithYOffset(sChartValueArray, sChartValueArrayIndex, CHART_MODE_LINE);
+            /*
+             * Draw the graph
+             */
+            VoltageChart.drawChartDataWithYOffset(sChartValueArray, aChartValueArrayIndex + 1, CHART_MODE_LINE);
         }
     } else
 #  endif // defined(SUPPORT_BLUEDISPLAY_CHART)
@@ -3602,12 +3623,12 @@ void readAndProcessEEPROMData(bool aInitializeValuesForDisplayAndAppend) {
     int tFirstNonWrittenIndex = tLastWrittenIndex + 1;
 
 #if defined(LOCAL_TRACE)
-    Serial.print(F("tLastWrittenIndex="));
-    Serial.print(tLastWrittenIndex);
-    Serial.print(F(" &tLastWrittenIndex=0x"));
-    Serial.println((uint16_t) &EEPROMDataArray[tLastWrittenIndex], HEX);
-    // dump 2 lines containing the 3 byte data
-    dumpEEPROM((uint8_t*) ((uint16_t) &EEPROMDataArray[tLastWrittenIndex] & 0xFFF0), 2);
+Serial.print(F("tLastWrittenIndex="));
+Serial.print(tLastWrittenIndex);
+Serial.print(F(" &tLastWrittenIndex=0x"));
+Serial.println((uint16_t) &EEPROMDataArray[tLastWrittenIndex], HEX);
+// dump 2 lines containing the 3 byte data
+dumpEEPROM((uint8_t*) ((uint16_t) &EEPROMDataArray[tLastWrittenIndex] & 0xFFF0), 2);
 #endif
 
     uint16_t tVoltageMillivolt = ChartStartValues.initialMillivolt;
@@ -3637,13 +3658,11 @@ void readAndProcessEEPROMData(bool aInitializeValuesForDisplayAndAppend) {
     }
 
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-    sChartValueArrayIndex = 0; // Start a new chart line
-
 #  if defined(LOCAL_DEBUG)
-    Serial.print(F("Store="));
-    Serial.print(aInitializeValuesForDisplayAndAppend);
-    Serial.print(F(" Type="));
-    Serial.print(sChartReadValueArrayType);
+Serial.print(F("Store="));
+Serial.print(aInitializeValuesForDisplayAndAppend);
+Serial.print(F(" Type="));
+Serial.print(sChartReadValueArrayType);
 #  endif
 #endif // defined(SUPPORT_BLUEDISPLAY_CHART)
 
@@ -3688,35 +3707,37 @@ void readAndProcessEEPROMData(bool aInitializeValuesForDisplayAndAppend) {
      ****************************************************/
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (!aInitializeValuesForDisplayAndAppend) {  // Check is only required for SUPPORT_BLUEDISPLAY_CHART
-        printValuesForPlotterAndChart(tVoltageMillivolt, tMilliampere, tMilliohm, false);
-        Serial.println(); // for first line from printValuesForPlotterAndChart
+        printChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false); // store at ChartValueArrayIndex 0
+        Serial.println();  // for first line from printChartAndPlotterGraph
     }
 #else
-    printValuesForPlotterAndChart(tVoltageMillivolt, tMilliampere, tMilliohm, false); // print always at non BD mode
-    Serial.println(); // for first line from printValuesForPlotterAndChart
+    printChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false); // print always at non BD mode
+    Serial.println(); // for first line from printChartAndPlotterGraph
 #endif
 
     /*******************************************
      * Loop to read and print all EEPROM values
      *******************************************/
+    // tChartValueArrayIndex is not really required for non BD / only plotter mode, but it is used as parameter for printChartAndPlotterGraph(), so keep it.
+    uint16_t tChartValueArrayIndex = 1; // The index of sChartValueArray where the current processed EEPROM value is written to
     for (int i = 0; i < tFirstNonWrittenIndex; ++i) { // tFirstNonWrittenIndex can be from 0 to MAX_NUMBER_OF_SAMPLES
 
         eeprom_read_block(&tEEPROMData, &EEPROMDataArray[i], sizeof(tEEPROMData));
         tVoltageMillivolt += tEEPROMData.DeltaMillivolt;
         tMilliampere += tEEPROMData.DeltaMilliampere;
         tMilliohm += tEEPROMData.DeltaESRMilliohm;
-        tCapacityAccumulator += tMilliampere; // putting this into printValuesForPlotterAndChart() increases program size
+        tCapacityAccumulator += tMilliampere; // putting this into printChartAndPlotterGraph() increases program size
 
 #if defined(LOCAL_TRACE)
-Serial.print(F("EEPROM values="));
-Serial.print(tEEPROMData.DeltaMillivolt);
-Serial.print(' ');
-Serial.print(tEEPROMData.DeltaMilliampere);
-Serial.print(' ');
-Serial.print(tEEPROMData.DeltaESRMilliohm);
-Serial.print(F(" CapAccu="));
-Serial.print(tCapacityAccumulator);
-Serial.println();
+    Serial.print(F("EEPROM values="));
+    Serial.print(tEEPROMData.DeltaMillivolt);
+    Serial.print(' ');
+    Serial.print(tEEPROMData.DeltaMilliampere);
+    Serial.print(' ');
+    Serial.print(tEEPROMData.DeltaESRMilliohm);
+    Serial.print(F(" CapAccu="));
+    Serial.print(tCapacityAccumulator);
+    Serial.println();
 #endif
 
         // Don't know, what this is for, since it is overwritten
@@ -3799,7 +3820,9 @@ Serial.println();
         if (!aInitializeValuesForDisplayAndAppend) // Check is only required for SUPPORT_BLUEDISPLAY_CHART
 #endif
         {
-            printValuesForPlotterAndChart(tVoltageForPrint, tMilliampere, tMilliohm, i == (tFirstNonWrittenIndex - 1));
+            printChartAndPlotterGraph(tVoltageForPrint, tMilliampere, tMilliohm, tChartValueArrayIndex,
+                    i == (tFirstNonWrittenIndex - 1));
+            tChartValueArrayIndex++;
 
 #if !defined(SUPPRESS_SERIAL_PRINT) // 270 bytes programming space
             if (!sOnlyPlotterOutput) {
@@ -3822,7 +3845,7 @@ Serial.println();
                 }
             }
 #endif
-            Serial.println(); // for line from printValuesForPlotterAndChart plus optional tPrintDelayed text above
+            Serial.println(); // for line from printChartAndPlotterGraph plus optional tPrintDelayed text above
         }
     } // End of read loop
 
@@ -4053,7 +4076,7 @@ void doCutoffHighLowZero(BDButton *aTheTouchedButton, int16_t aValue) {
  */
 void connectHandler(void) {
 #if defined(LOCAL_DEBUG)
-    Serial.println(F("connectHandler"));
+Serial.println(F("connectHandler"));
 #endif
     initDisplay(); // does a clear();
     initBatteryChart();
@@ -4076,7 +4099,7 @@ void connectHandler(void) {
 
 void redrawDisplay(void) {
 #if defined(LOCAL_DEBUG)
-    Serial.println(F("redrawDisplay"));
+Serial.println(F("redrawDisplay"));
 #endif
     BlueDisplay1.clearDisplay(sBackgroundColor);
     forceDisplayOfCurrentValues();
@@ -4090,10 +4113,10 @@ void initDisplay(void) {
 #endif
 
 #if defined(LOCAL_DEBUG)
-    Serial.print(F("InitDisplay: Host W x H="));
-    Serial.print(BlueDisplay1.getHostDisplayWidth());
-    Serial.print(F(" x "));
-    Serial.println(BlueDisplay1.getHostDisplayHeight());
+Serial.print(F("InitDisplay: Host W x H="));
+Serial.print(BlueDisplay1.getHostDisplayWidth());
+Serial.print(F(" x "));
+Serial.println(BlueDisplay1.getHostDisplayHeight());
 #endif
     uint16_t tDisplayHeight;
     if (BlueDisplay1.getHostDisplayHeight() > BlueDisplay1.getHostDisplayWidth()) {
@@ -4143,7 +4166,7 @@ void initDisplay(void) {
 //            sTesterInfo.inLoggerModeAndFlags, &doAppend);
 
 // 58 bytes
-    tBDButtonPGMParameterStruct.aWidthX = BUTTON_WIDTH + (BASE_TEXT_SIZE * 3);
+    tBDButtonPGMParameterStruct.aWidthX = BUTTON_WIDTH + (BASE_TEXT_SIZE * 4);
     tBDButtonPGMParameterStruct.aPositionY += BASE_TEXT_SIZE + (BASE_TEXT_SIZE / 2);
     tBDButtonPGMParameterStruct.aOnTouchHandler = &doCutoffHighLowZero;
     TouchButtonCutoffHighLowZero.init(&tBDButtonPGMParameterStruct);
@@ -4224,6 +4247,9 @@ void initBatteryChart() {
     VoltageChart.initChartColors(CHART_VOLTAGE_COLOR, CHART_AXES_COLOR, CHART_GRID_COLOR, sTextColor, sTextColor, sBackgroundColor);
 }
 
+/*
+ * Content and labels of chart is written in printChartAndPlotterGraph()
+ */
 void clearAndDrawChart() {
     VoltageChart.clear();
     VoltageChart.drawXAxisAndLabels();
@@ -4388,15 +4414,15 @@ void readAndDrawEEPROMValues() {
 
 void printCapacityValue() {
     char tString[18];
-    if (sTesterInfo.isStandardCapacityAvailable) {
+    if (sTesterInfo.isStandardCapacityAvailable && ValuesForDeltaStorage.DeltaArrayIndex >= 0) {
 // 70 bytes
         snprintf_P(tString, sizeof(tString), PSTR("%5u | %u mAh"), sBatteryOrLoggerInfo.CapacityMilliampereHour,
                 sTesterInfo.StandardCapacityMilliampereHour);
     } else {
         snprintf_P(tString, sizeof(tString), PSTR("%5u mAh        "), sBatteryOrLoggerInfo.CapacityMilliampereHour);
     }
-    BlueDisplay1.drawText(CHART_VALUES_POSITION_X, BlueDisplay1.getRequestedDisplayHeight() - ((sChartDataTextSize + 1) * 9), tString,
-            sChartDataTextSize, sTextColor, sBackgroundColor);
+    BlueDisplay1.drawText(CHART_VALUES_POSITION_X, BlueDisplay1.getRequestedDisplayHeight() - ((sChartDataTextSize + 1) * 9),
+            tString, sChartDataTextSize, sTextColor, sBackgroundColor);
 }
 
 /*
@@ -4476,6 +4502,9 @@ void printChartValues() {
 #endif // defined(SUPPORT_BLUEDISPLAY_CHART)
 
 /*
+ * Version 7.0 - 10/2025
+ *  - Changed analog pin assignments for two additional voltage ranges using internal reference.
+ *
  * Version 6.0 - 9/2025
  *  - Improved logger handling.
  *  - Improved chart scaling.
