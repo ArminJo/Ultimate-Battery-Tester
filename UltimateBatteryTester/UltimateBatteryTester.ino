@@ -485,7 +485,10 @@ LOW_LOAD, 10 }, /*300 mA*/
         3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, 10 }, /*925 mA*/
 { "LiIo 4pack", 4 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 4 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
         4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
-        4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, 10 } /*1233 mA*/
+        4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, 10 }, /*1233 mA*/
+{"LiIo 5pack", 5 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 5 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
+        5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
+        5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, 10 }
 // @formatter:on
         };
 
@@ -1003,7 +1006,7 @@ void loop() {
                         && (unsigned) (tMillis - sTesterInfo.LastMillisOfSample)
                                 >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis))) {
             /*
-             * Here sample period (one second) expired
+             * Here sample period of one second expired
              * sTesterInfo.MeasurementState is STATE_INITIAL_SAMPLES or STATE_SAMPLE_AND_STORE_TO_EEPROM or STATE_STOPPED
              * Do all this every second (of battery load)
              */
@@ -1233,6 +1236,7 @@ void handleEndOfStateInitialSamples() {
          * Force new data set, no append here
          */
         ValuesForDeltaStorage.DeltaArrayIndex = -1;
+        ChartStartValues.NumberOfSecondsPerStorage = INITIAL_NUMBER_OF_SECONDS_PER_STORAGE; // reset sample timing for first sample
         sBatteryOrLoggerInfo.CapacityAccumulator = 0;
         // Must reset this values here, because values are displayed before computed again from CapacityAccumulator
         sBatteryOrLoggerInfo.CapacityMilliampereHour = 0;
@@ -3203,7 +3207,6 @@ Serial.println();
         ChartStartValues.CutoffLevel = sBatteryOrLoggerInfo.CutoffLevel;
         ChartStartValues.BatteryTypeIndex = sBatteryOrLoggerInfo.BatteryTypeIndex;
         ChartStartValues.inLoggerModeAndFlags = sTesterInfo.inLoggerModeAndFlags;
-        ChartStartValues.NumberOfSecondsPerStorage = INITIAL_NUMBER_OF_SECONDS_PER_STORAGE;
 
         // sBatteryOrLoggerInfo.CapacityMilliampereHour is set to 0 in handleEndOfStateInitialSamples()
         ChartStartValues.CapacityMilliampereHour = 0; // Overwrite old capacity value of last EEPROM data set. Capacity is also written at the end
