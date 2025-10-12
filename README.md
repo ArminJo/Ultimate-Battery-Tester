@@ -24,6 +24,32 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 
 <br/>
 
+# Table of content
+- [Features](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#features)
+- [Li-Ion battery capacity](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#li-ion-battery-capacity)
+- [Battery ESR](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#battery-esr)
+- [Principle of operation](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#principle-of-operation)
+- [Measurement of battery packs with external series load resistor](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#measurement-of-battery-packs-with-external-series-load-resistor)
+- [Logger function](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#logger-function)
+- [Sample screenshots](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#sample-screenshots)
+- [Sample plots](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#sample-plots)
+- [Compile with the Arduino IDE](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#compile-with-the-arduino-ide)
+- [Pictures](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#pictures)
+- [Schematics](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#schematics)
+- [Special pin usage](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#special-pin-usage)
+- [Examples on Wokwi](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#examples-on-wokwi)
+- [Modes of measurement](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#modes-of-measurement)
+   * [Mode Setup](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#mode-setup)
+   * [Stop and Start again](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#stop-and-start-again)
+   * [Mode DetectingBattery](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#mode-detectingbattery)
+   * [Mode InitialESRMeasurement](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#mode-initialesrmeasurement)
+   * [Mode StoreToEEPROM](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#mode-storetoeeprom)
+   * [Mode Stopped](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#mode-stopped)
+   * [Cutoff display](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#cutoff-display)
+- [Revision History](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#revision-history)
+
+<br/>
+
 # Features
 - **Measurement of the ESR (equivalent series resistance) of the battery.** This is an indicator of the health of the battery.
 - **Storing of voltage, current and ESR graph for up to 22 hours as well as capacity in EEPROM** while discharging.
@@ -47,7 +73,7 @@ For Li-Ion the capacity is specified for discharge from **4.2 V to 3.0 V** as in
 or to **2.75 V** as in [ICR18650-26A Datasheet](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/ICR18650-26A_Samsung.pdf) or even to **2.5 V**.<br/>
 The **UltimateBatteryTester has a cut-off voltage of 3.4 V** for Li-Ion to treat the cells with care.<br/>
 This results in a reduced capacity displayed by approximately the factor 0.85 (1.18), e.g. a Li-Ion cell with nominal capacity of 2150 mAh at 3 V EOD (End Of Discharge) is measured as 1830 mAh at 3.5 V EOD.<br/>
-The cut off voltage can be changed to low values by connecting pin 11 to ground. See [here](#special-pin-usage).
+The cut off voltage can be changed to low values by connecting pin 11 to ground. See [here](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#special-pin-usage).
 
 <br/>
 
@@ -72,7 +98,7 @@ The internal LED is active for the time the load is detached. This results in a 
 
 Every minute, current data is stored/appended to EEPROM. **The complete data is printed in Arduino Plotter format at each reboot**.
 So it is possible to interrupt the measurement or switch it off after the measurement is finished, without loosing data.
-More details can be found [below](#modes-of-measurement).
+More details can be found [below](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#modes-of-measurement).
 
 If `#define SUPPORT_BLUEDISPLAY_CHART` is activated, values and the discharge graph are printed on a tablet or mobile running the [BlueDisplay](https://play.google.com/store/apps/details?id=de.joachimsmeyer.android.bluedisplay) app.<br/>
 The new version of the app also supports a USB OTG connection. This eliminates the need for an additional Bluetooth module.
@@ -95,7 +121,7 @@ No other adaption has to be made.
 By connecting pin 10 to ground, logger mode is entered after startup. Voltage is still measured at the same pin as for Battery mode.
 For current measurement in Logger mode, we use an separate external shunt connected at pin A4.<br/>
 To avoid disturbing the circuit in which we are measuring the current, this shunt is typically smaller than the shunt used in battery mode.
-Its value is defined by `LOGGER_SHUNT_RESISTOR_MILLIOHM`.<br/>
+Its value is defined by `LOGGER_SHUNT_RESISTOR_MILLIOHM` e.g. 200 for 0.2 &ohm;.<br/>
 Cutoff / end condition is, when current drops below 50%, 25% or 12.5% of start current.
 12.5% is default and useful for logging charging circuits which reduce current at the end of charge.
 
@@ -280,6 +306,7 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 # Revision History
 ### Version 7.0.0
 - Changed analog pin assignments for two additional voltage ranges using internal reference.
+- Fixed some bugs in logger mode.
 
 ### Version 6.0.0
 - Improved logger handling.

@@ -33,9 +33,10 @@
  *  LOGGER:
  *  Logger resistor is 0.2 Ohm and much smaller than the resistor used for ESR measurement.
  *  This is because this resistance is added to the ESR of the probe and may influence e.g. charging or discharging end detection of the external circuit.
- *  The current is sampled 769 times per second.
- *  The logger resistor is connected to pin A4.
- *  End condition is checked every second.
+ *  The current and voltage is sampled 769 times per second.
+ *  Displayed and stored voltage is average of all samples, but for future use maximum and minimum are also available.
+ *  If voltage or current is available logging starts.
+ *  Both values are written to EEPROM. Zero ESR value is written too, but is not displayed in logger mode.
  *
  *
  *  Copyright (C) 2021-2025  Armin Joachimsmeyer
@@ -78,6 +79,10 @@
 #define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100UL // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
 
+/*
+ * In WOKWI, we cannot simulate voltage division with resistors, so me must tweak it
+ */
+//#define IN_WOKWI
 /*
  * Enables output of values and the discharge graph on a tablet or mobile running the BlueDisplay app.
  * Disables many Serial output to save program memory space.
@@ -157,7 +162,7 @@ bool sLastValueOfCutoffLevelPin; // To support prints and voltage setting at cha
  * External circuit definitions
  */
 #if !defined(LOGGER_SHUNT_RESISTOR_MILLIOHM)
-#define LOGGER_SHUNT_RESISTOR_MILLIOHM          200L    // 0.2 ohm -> Resolution of 5 mA, but we display the average of 769 values
+#define LOGGER_SHUNT_RESISTOR_MILLIOHM          200L    // 0.2 ohm -> Resolution of 5 mA, but we display the average of 769 values per second
 #endif
 #if !defined(ESR_SHUNT_RESISTOR_MILLIOHM)
 #define ESR_SHUNT_RESISTOR_MILLIOHM             2000L   // 2 ohm
@@ -192,8 +197,8 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
 /*********************
  * Measurement timing
  *********************/
-#define MILLIS_IN_ONE_SECOND 1000L
-#define SECONDS_IN_ONE_MINUTE 60L
+#define MILLIS_IN_ONE_SECOND 1000UL
+#define SECONDS_IN_ONE_MINUTE 60UL
 #define SECONDS_IN_ONE_MINUTE_SHORT 60
 #define MINUTES_IN_ONE_HOUR_SHORT 60
 //#define TEST // to speed up testing the code
@@ -208,7 +213,7 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
  * Using minutes instead of seconds and avoiding the divide by 60 at many places increases code size by 46 bytes :-(
  */
 #  if !defined(INITIAL_NUMBER_OF_SECONDS_PER_STORAGE)
-#define INITIAL_NUMBER_OF_SECONDS_PER_STORAGE   SECONDS_IN_ONE_MINUTE // 60, if we have 1 sample per second (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS)
+#define INITIAL_NUMBER_OF_SECONDS_PER_STORAGE   SECONDS_IN_ONE_MINUTE_SHORT // 60, if we have 1 sample per second (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS)
 #  endif
 #endif
 
@@ -334,21 +339,25 @@ uint8_t sChartReadValueArrayType; // 0 = voltage, 1 = ESR, 2 = current
 //uint8_t sChartDisplayValueArrayType; // 0 = voltage, 1 = ESR, 2 = current - not yet implemented
 
 /*
- * Factor to convert the original mV, mOhm, mA to the 8 bit chart array data. The offset is subtracted before compression.
- * Compression and offset values ate transfered to host, to expand data.
+ * Factor to convert the original mV, mOhm, mA to the 8 bit chart array data. The offset (for voltage) is subtracted before compression.
+ * Compression and offset values are transfered to host, to expand data.
+ *
  * sCompressionFactor 10 means maximum (delta) value is 2.55 V, A, Ohm.
  * We have 7 grids for Y axis and use a 1, 2, 5 scheme.
  * In order to achieve optimal resolution for factor 10, it is necessary to select a 200 mV grid.
  * This selection enables the display of a maximum of 1.4 V / 1400 mV (input is then 140).
- * For voltages that exceed 1.4 V a the next higher compression of 25 and a scale value of 500 mV grid
- * is required to ensure optimal resolution.
- * This selection enables the display of a maximum of 3.5 V.
- * sCompressionFactor 50 -> 1 V grid and 7 V maximum range.
- * Minimum sensible compression factor is 5 -> 100 mV grid, 700 mV range.
- * Maximum sensible compression factor is 250 -> 5 V grid, 35 V range.
+ * sCompressionFactor 25 and a scale value of 500 mV grid is required to ensure optimal resolution for 1.4 V to 3.5 V.
+ *
+ * sCompressionFactor  10 -> 0.2 V grid and 1.4 V maximum range at value  1400/10 = 140.
+ * sCompressionFactor  25 -> 0.5 V grid and 3.5 V maximum range at value  3500/25 = 140.
+ * sCompressionFactor  50 ->   1 V grid and   7 V maximum range at value  7000/50 = 140.
+ * sCompressionFactor 100 ->   2 V grid and  14 V maximum range at value 14000/100= 140.
+ * Minimum sensible compression factor for voltage is 5 -> 100 mV grid, 700 mV range.
+ * Maximum sensible compression factor for voltage is 500 -> 10 V grid, 70 V range.
+ *
  */
-uint16_t sCompressionFactor;
-uint16_t sChartCompressionFactor; // (initial) factor for mV to chart array data, required to compute sCompressionFactor for ESR and current.
+uint16_t sCompressionFactorTimes10; // Times 10 because we must avoid sChartCompressionFactor being 25 and sCompressionFactor = sChartCompressionFactor / 10.
+uint16_t sVoltageChartCompressionFactor; // 50 to 5000 (initial) factor for mV to chart array data, required to compute sCompressionFactorTimes10 for ESR and current.
 uint16_t sCompressionOffsetMillivolt; // Value to subtract from millivolt before compressing
 
 /*
@@ -450,11 +459,13 @@ struct BatteryTypeInfoStruct {
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT        3400 // Switch off voltage for Li-ion standard capacity measurement
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for extended capacity measurement
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO    180
+#define LI_ION_SWITCH_OFF_SETTLING_MILLIS            20 // Time to switch of load to before measuring no load voltage - heuristic value
 
 #define NIMH_STANDARD_FULL_VOLTAGE_MILLIVOLT       1340 // Start voltage for NI-MH standard capacity measurement
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW      1000 // Switch off voltage for extended capacity measurement
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO      140 // witch off voltage for extended capacity measurement
+#define OTHER_SWITCH_OFF_SETTLING_MILLIS            100 // Time to switch of load to before measuring no load voltage / settling time
 
 #define NO_LOAD     0
 #define LOW_LOAD    1 // 12 ohm
@@ -465,32 +476,33 @@ struct BatteryTypeInfoStruct {
 #define TYPE_INDEX_MAX          10
 #define TYPE_INDEX_LOGGER       42
 
-struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = { { "No battery", NO_BATTERY_MILLIVOLT, 0, 0, 0, 0, NO_LOAD, 0 }, /* Below 100 mV and not below 50, to avoid toggling between no and low batt */
-{ "Low batt. ", 1000, 800, 300, 100, 70, HIGH_LOAD, 100 }, /* For researching of worn out batteries. */
 // @formatter:off
-{ "NiCd NiMH ", 1460, NIMH_STANDARD_FULL_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT,
-NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, HIGH_LOAD, 100 }, /*400 mA*/
-{ "Alkali    ", 1550, 1500, 1300, 1000, 70, HIGH_LOAD, 100 }, /*500 mA*/
-{ "NiZn batt.", 1850, 1650, 1400, 1300, 100, HIGH_LOAD, 100 }, /*550 mA*/
-{ "LiFePO4   ", 3400, 3400, 3050, 2700, 180, LOW_LOAD, 10 }, /*270 mA https://www.jackery.com/blogs/knowledge/ultimate-guide-to-lifepo4-voltage-chart*/
-{ "Li-ion    ", 5000, LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT /*4100*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3400*/,
-LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*180mV*/,
-LOW_LOAD, 10 }, /*300 mA*/
-{ "LiIo 2pack", 2 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 2 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
-        2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
-        2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*360mV*/, LOW_LOAD, 10 }, /*620 mA*/
-{ "9 V Block ", 9200, 9000, 7700, 7000, 200, LOW_LOAD, 100 }, /*750 mA => external series load resistor recommended*/
-{ "LiIo 3pack", 3 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 3 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
-        3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
-        3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, 10 }, /*925 mA*/
-{ "LiIo 4pack", 4 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 4 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
-        4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
-        4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, 10 }, /*1233 mA*/
-{"LiIo 5pack", 5 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 5 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
-        5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
-        5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, 10 }
+struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = {
+    { "No battery", NO_BATTERY_MILLIVOLT, 0, 0, 0, 0, NO_LOAD, 0 }, /* Below 100 mV and not below 50, to avoid toggling between no and low batt */
+    { "Low batt. ", 1000, 800, 300, 100, 70, HIGH_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /* For researching of worn out batteries. */
+    { "NiCd NiMH ", 1460, NIMH_STANDARD_FULL_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT,
+            NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, HIGH_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /*400 mA*/
+    { "Alkali    ", 1550, 1500, 1300, 1000, 70, HIGH_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /*500 mA*/
+    { "NiZn batt.", 1850, 1650, 1400, 1300, 100, HIGH_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /*550 mA*/
+    { "LiFePO4   ", 3400, 3400, 3050, 2700, 180, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*270 mA https://www.jackery.com/blogs/knowledge/ultimate-guide-to-lifepo4-voltage-chart*/
+    { "Li-ion    ", 5000, LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT /*4100*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3400*/,
+            LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*180mV*/,
+            LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*300 mA*/
+    { "LiIo 2pack", 2 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 2 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
+            2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
+            2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*360mV*/, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*620 mA*/
+    { "9 V Block ", 9200, 9000, 7700, 7000, 200, LOW_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /*750 mA => external series load resistor recommended*/
+    { "LiIo 3pack", 3 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 3 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
+            3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
+            3 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*925 mA*/
+    { "LiIo 4pack", 4 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 4 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
+            4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
+            4 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*1233 mA*/
+    {"LiIo 5pack", 5 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT, 5 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
+            5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT, 5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW,
+            5 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }
+};
 // @formatter:on
-        };
 
 /*******************************************
  * Battery values set by getBatteryValues()
@@ -549,8 +561,9 @@ struct Logger1MinuteAccumulatorStruct {
  */
 #define NO_LOGGER_MODE_REQUESTED            0
 #define LOGGER_MODE_REQUESTED               1
-#define LOGGER_EXTERNAL_CURRENT_DETECTED    2
-#define LOGGER_EXTERNAL_VOLTAGE_DETECTED    4
+#define LOGGER_EXTERNAL_CURRENT_DETECTED    2 // one time flag during measurement
+#define LOGGER_EXTERNAL_VOLTAGE_DETECTED    4 // one time flag during measurement
+#define LOGGER_MODE_MASK                    LOGGER_MODE_REQUESTED
 
 struct TesterInfoStruct {
     uint8_t inLoggerModeAndFlags; // Initially contains the (inverted) value of the pin ONLY_LOGGER_MODE_PIN
@@ -600,14 +613,17 @@ uint16_t sCurrentLoadResistorAverage;
  * Current value is in sESRHistory[0]. The average is stored in sBatteryOrLoggerInfo.ESRMilliohm.
  * For 9V and 60 mA we have a resolution of 0.3 ohm so we need an average.
  */
-#define HISTORY_SIZE_FOR_ESR_AVERAGE    60
-uint16_t sESRHistory[HISTORY_SIZE_FOR_ESR_AVERAGE];
+#define HISTORY_SIZE_FOR_ESR_AVERAGE    (INITIAL_NUMBER_OF_SECONDS_PER_STORAGE * 2)
+uint16_t sESRHistory[HISTORY_SIZE_FOR_ESR_AVERAGE]; //  Current value is in sESRHistory[0].
+uint8_t sESRHistoryLength; // keep track of number of valid inputs used for append, where history array is not filled up completely
 
 // Override defaults defined in ADCUtils.h
 #define LI_ION_VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT 3500 // 3.5 volt
 #define VCC_CHECK_PERIOD_MILLIS                     (60000L) // check every minute
 #define VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP         5 // Shutdown after 5 times below VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT or below VCC_EMERGENCY_UNDERVOLTAGE_THRESHOLD_MILLIVOLT
+#if !defined(SUPPRESS_SERIAL_PRINT)
 #define LOCAL_INFO // For Serial output at isVCCUndervoltageMultipleTimes(). This is undefined after the include!
+#endif
 #include "ADCUtils.hpp"
 
 /************************************************************************************************
@@ -623,7 +639,7 @@ struct EEPROMStartValuesStruct {
     uint16_t CapacityMilliampereHour; // Is set at end of measurement or by store button
     uint8_t CutoffLevel; // One of CUTOFF_LEVEL_HIGH, CUTOFF_LEVEL_LOW and CUTOFF_LEVEL_ZERO.
     uint8_t BatteryTypeIndex;
-    uint8_t inLoggerModeAndFlags;
+    uint8_t inLoggerModeAndFlags; // 0 or 1 - is sTesterInfo.inLoggerModeAndFlags & LOGGER_MODE_MASK
     uint8_t NumberOfSecondsPerStorage; // INITIAL_NUMBER_OF_SECONDS_PER_STORAGE (60) and multiple like 120, 240, etc.
 } ChartStartValues;
 EEMEM EEPROMStartValuesStruct EEPROMStartValues;
@@ -685,7 +701,7 @@ void clearLogger1SecondAccumulator();
 void clearLogger1MinuteAccumulator();
 void getLogger1SecondValues();
 void getLogger1MinuteValues();
-void handlePeriodicAccumulatingLoggerValues();
+void getPeriodicAccumulatingLoggerValues();
 
 void getCurrent(uint8_t aADCChannel, uint16_t aShuntResistorMilliohm);
 void getBatteryValues();
@@ -699,7 +715,7 @@ bool printMilliampere4DigitsLCD_BD();
 void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
 void forceDisplayOfCurrentValues();
 void printMeasurementValuesLCD_BD();
-void printChartAndPlotterGraph(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
+void printEEPROMChartAndPlotterGraph(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
         uint16_t aChartValueArrayIndex, bool aIsLastElement);
 void printMillisValueAsFloat(uint16_t aValueInMillis);
 void printCounterLCD_BD(uint16_t aNumberToPrint);
@@ -883,6 +899,9 @@ void setup() {
 #  if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (!BlueDisplay1.isConnectionEstablished()) {
 #  endif
+        /*
+         * Do not print if connected to BlueDisplay screen, which shows chart and indirect also the mode by ("no U or I" or "no battery")
+         */
         myLCD.setCursor(0, 1);
         if (sOnlyPlotterOutput) {
             myLCD.print(F("Only plotter out"));
@@ -906,7 +925,7 @@ void setup() {
     }
 #endif
 
-#  if (INITIAL_NUMBER_OF_SECONDS_PER_STORAGE * SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS != 60000)
+#  if ((INITIAL_NUMBER_OF_SECONDS_PER_STORAGE * SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS) != 60000)
     myLCD.setCursor(0, 1);
     myLCD.print(INITIAL_NUMBER_OF_SECONDS_PER_STORAGE);
     myLCD.print(F(" s / storage "));
@@ -933,7 +952,6 @@ void setup() {
 
     if (sTesterInfo.inLoggerModeAndFlags) {
         sCurrentLoadResistorAverage = LOGGER_SHUNT_RESISTOR_MILLIOHM;
-        sBatteryOrLoggerInfo.ESRMilliohm = 0; // not used in logger function
     }
 
     /*
@@ -997,7 +1015,7 @@ void loop() {
          * STATE_INITIAL_SAMPLES / Testing or STATE_SAMPLE_AND_STORE_TO_EEPROM / Running or STATE_STOPPED here
          */
         if (sTesterInfo.inLoggerModeAndFlags) {
-            handlePeriodicAccumulatingLoggerValues();
+            getPeriodicAccumulatingLoggerValues();
         }
         auto tMillis = millis();
         // For discharging, add LoadSwitchSettleTimeMillis to the second condition
@@ -1077,9 +1095,11 @@ void loop() {
  */
 void getOnlyPlotterOutputPinLevel() {
     sOnlyPlotterOutput = !digitalRead(ONLY_PLOTTER_OUTPUT_PIN);
+#if !defined(IN_WOKWI)
     if (isVCCUSBPowered()) {
         sOnlyPlotterOutput = !sOnlyPlotterOutput; // reversed behavior if powered by USB
     }
+#endif
 }
 
 /*
@@ -1143,6 +1163,8 @@ void handlePeriodicDetectionOfProbe() {
 #endif
                 sTesterInfo.NumbersOfInitialSamplesToGo = NUMBER_OF_INITIAL_SAMPLES;
                 memset(sESRHistory, 0, sizeof(sESRHistory));
+                sESRHistoryLength = 0;
+
                 if (sTesterInfo.inLoggerModeAndFlags) {
                     /*
                      * Initialize logger accumulators
@@ -1270,9 +1292,9 @@ void handleStateStoppedLCD_BD() {
 #if defined(USE_LCD)
             myLCD.setCursor(7, 0);
             if (sTesterInfo.MeasurementWasFinishedByEndCondition) {
-                myLCD.print("---"); // Overwrite "Finished" and signal with "---", that we are finished now
+                myLCD.print("fin"); // Overwrite "Finished" and signal with "fin", that we are finished now
             } else {
-                myLCD.print("   "); // Overwrite "Stopped" and signal with "---", that we are stopped now
+                myLCD.print("stp"); // Overwrite "Stopped" and signal with "stp", that we are stopped now
             }
 #endif
         }
@@ -1409,7 +1431,7 @@ void switchToStateInitialSamples() {
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (BlueDisplay1.isConnectionEstablished()) {
         // append is only possible, if logger modes are equal
-        if (ChartStartValues.inLoggerModeAndFlags == sTesterInfo.inLoggerModeAndFlags) {
+        if ((sTesterInfo.inLoggerModeAndFlags & LOGGER_MODE_MASK) == ChartStartValues.inLoggerModeAndFlags) {
             TouchButtonAppend.drawButton();
         }
     }
@@ -1426,8 +1448,8 @@ void switchToStateInitialSamples() {
 void switchToStateSampleAndStoreToEEPROM(uint16_t aInitialSampleCountForStoring) {
     sTesterInfo.SampleCountForStoring = aInitialSampleCountForStoring;
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-    checkLeavingState(); // remove append button
-    clearValueArea();    // to remove display of count
+    checkLeavingState();            // remove append button
+    forceDisplayOfCurrentValues();  // to remove display of count
 #endif
     setMeasurementStateAndBDButtonText(STATE_SAMPLE_AND_STORE_TO_EEPROM);
     printSwitchStateString();
@@ -1721,7 +1743,8 @@ void printButtonUsageMessageLCD() {
         }
 #endif
 #if defined(USE_LCD)
-        if (ChartStartValues.inLoggerModeAndFlags == sTesterInfo.inLoggerModeAndFlags) {
+        // append is only possible, if logger modes are equal
+        if ((ChartStartValues.inLoggerModeAndFlags & LOGGER_MODE_MASK) == sTesterInfo.inLoggerModeAndFlags) {
             LCDResetCursor();
             myLCD.print(F("Press button to "));
             myLCD.setCursor(0, 1);
@@ -1845,7 +1868,7 @@ void handleStartStopButtonPress(bool aButtonToggleState) {
                 sTesterInfo.VoltageNoLoadIsDisplayedOnLCD = false;
 #endif
 
-            } else if (ChartStartValues.inLoggerModeAndFlags == sTesterInfo.inLoggerModeAndFlags) {
+            } else if ((sTesterInfo.inLoggerModeAndFlags & LOGGER_MODE_MASK) == ChartStartValues.inLoggerModeAndFlags) {
                 // STATE_INITIAL_SAMPLES here and logger modes are equal
 #if !defined(SUPPRESS_SERIAL_PRINT)
                 if (!sOnlyPlotterOutput) {
@@ -1869,7 +1892,7 @@ void handleStartStopButtonPress(bool aButtonToggleState) {
                 switchToStateWaitingForBatteryOrVoltage();
 
             } else if (sTesterInfo.MeasurementState == STATE_INITIAL_SAMPLES
-                    && ChartStartValues.inLoggerModeAndFlags == sTesterInfo.inLoggerModeAndFlags) {
+                    && ((sTesterInfo.inLoggerModeAndFlags & LOGGER_MODE_MASK) == ChartStartValues.inLoggerModeAndFlags)) {
                 /*****************************************************
                  * APPEND by button press is done here
                  * append is only possible, if logger modes are equal
@@ -1977,13 +2000,25 @@ uint8_t getVoltageAttenuationFactor() {
  * The ranges are realized by a
  * divider with 100 kOhm and 100 kOhm -> 2.2 V range and 2.15 mV resolution
  * divider with 100 kOhm and 33.333 kOhm (3 * 100 kOhm parallel) -> 4.4 V range and 4.3 mV resolution
- * divider with 100 kOhm and 6.666 kOhm (15 * 100 kOhm parallel or 100k + 10k + (10+15k) parallel) -> 17.6 V range and 17 mV resolution
+ * divider with 100 kOhm and 6.666 kOhm (15 * 100 kOhm parallel or 100k + 10k + (10+15k) parallel) -> 17.6 V (1.1*16) range and 17 mV resolution
  * divider with 100 kOhm and 1,71 kOhm (100k + 1.8k + 52k parallel) -> 64.9V range and 63 mV resolution
  * Does not affect the loads
  */
 uint16_t getVoltageRaw() {
     setADCChannelForNextConversionAndWaitUsingInternalReference(ADC_CHANNEL_FOR_VOLTAGE);
     uint16_t tInputVoltageRaw = readADCChannel();
+#if defined(IN_WOKWI)
+    tInputVoltageRaw = analogRead(A0); // use VCC reference
+    sTesterInfo.VoltageRange = tInputVoltageRaw / 256; // from 0 to 3
+    tInputVoltageRaw = (tInputVoltageRaw % 256) * 4; // 4 times from 0 to 1023
+//    if (!sOnlyPlotterOutput) {
+//        Serial.print(F("Range="));
+//        Serial.print(sTesterInfo.VoltageRange);
+//        Serial.print(F(", VoltageRaw="));
+//        Serial.println(tInputVoltageRaw);
+//    }
+    return tInputVoltageRaw;
+#endif
     bool tCheckAgainForRangeDecrease = true;
     /*
      * Automatic range
@@ -2101,14 +2136,19 @@ void getLogger1SecondValues() {
     sBatteryOrLoggerInfo.Milliampere = ((((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) / 1023L)
             * sLogger1SecondAccumulator.RawCurrentAccumulator)
             / (LOGGER_SHUNT_RESISTOR_MILLIOHM * LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT)); // / 3,076,000 for 200 mOhm
-
+    if (sBatteryOrLoggerInfo.Milliampere >= NO_LOGGER_MILLAMPERE) {
+        sTesterInfo.inLoggerModeAndFlags |= LOGGER_EXTERNAL_CURRENT_DETECTED; // set it, if once detected here
+    }
     /*
      * Compute voltage and avoid overflow
      * >> 8 and * 4 in divisor are a fast and short way to divide by 1024
+     * AverageMillivolt is a union with NoLoadMillivolt and used for display
      */
     sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt = ((sLogger1SecondAccumulator.RawVoltageAccumulator >> 8)
             / ((LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4) / ADC_INTERNAL_REFERENCE_MILLIVOLT));
-
+    if (sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt > NO_BATTERY_MILLIVOLT) {
+        sTesterInfo.inLoggerModeAndFlags |= LOGGER_EXTERNAL_VOLTAGE_DETECTED; // set it, if once detected here
+    }
     sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT)
             * (uint32_t) sLogger1SecondAccumulator.MaximumRawVoltage) / 1024L);
     sBatteryOrLoggerInfo.Voltages.Logger.MinimumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT)
@@ -2176,10 +2216,30 @@ Serial.println(F(" mV"));
  * First read 769 current values in 20 ms, then read 769 voltage values in 20 ms
  * complete reading takes 40.5 ms. For voltage > 4.4V it takes 48.5 ms
  */
-void handlePeriodicAccumulatingLoggerValues() {
+void getPeriodicAccumulatingLoggerValues() {
     if ((unsigned) (millis() - sTesterInfo.LastMillisOfLoggerSample) >= LOGGER_SAMPLE_PERIOD_MILLIS) {
         sTesterInfo.LastMillisOfLoggerSample = millis();
         digitalWrite(LED_BUILTIN, HIGH);
+
+#if defined(IN_WOKWI)
+        /*
+         * Fill accumulator only one time
+         */
+        if (sLogger1SecondAccumulator.RawCurrentAccumulator == 0) {
+            uint32_t tInputCurrentRaw = analogRead(A7); // use VCC reference
+            sLogger1SecondAccumulator.RawCurrentAccumulator += tInputCurrentRaw * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT
+                    * LOGGER_SAMPLE_FREQUENCY_HZ;
+        }
+        if (sLogger1SecondAccumulator.RawVoltageAccumulator == 0) {
+            uint32_t tInputVoltageRaw = analogRead(A0); // use VCC reference
+            tInputVoltageRaw *= 16; // simulate "Normalize to 1.1 V"
+            sLogger1SecondAccumulator.RawVoltageAccumulator += tInputVoltageRaw * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT
+                    * LOGGER_SAMPLE_FREQUENCY_HZ;
+            sLogger1SecondAccumulator.RawSampleCount += LOGGER_SAMPLE_FREQUENCY_HZ;
+        }
+        digitalWrite(LED_BUILTIN, LOW);
+        return;
+#endif
 
 // switch channel and reference
 #if defined(LOCAL_TRACE)
@@ -2276,7 +2336,6 @@ void handlePeriodicAccumulatingLoggerValues() {
 #endif
 
         sLogger1SecondAccumulator.RawSampleCount++;
-        digitalWrite(LED_BUILTIN, LOW);
     }
 }
 
@@ -2331,40 +2390,41 @@ void getBatteryValues() {
     digitalWrite(LED_BUILTIN, LOW);
 
     if (sBatteryOrLoggerInfo.Milliampere > 1) {
-        if (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt >= sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt) {
+        if (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt > sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt) {
             /*
              * ESR computation
              */
             sBatteryOrLoggerInfo.ESRDeltaMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt
                     - sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt;
         } else {
-            sBatteryOrLoggerInfo.ESRDeltaMillivolt = 0;
+            sBatteryOrLoggerInfo.ESRDeltaMillivolt = 0; // avoid negative / unsigned overflow for ESR
         }
         /*
          * Compute sESRAverage
          * Shift history array to end and insert current value at [0]
          */
-        uint8_t tESRAverageHistoryCounter = 1; // below we add current value too
-        uint32_t tESRAverageAccumulator = 0;
-        for (uint_fast8_t i = HISTORY_SIZE_FOR_ESR_AVERAGE - 1; i > 0; --i) {
-            if (sESRHistory[i - 1] != 0) {
-                // shift i-1 to i and add to average
+        uint32_t tESRMilliohm = (sBatteryOrLoggerInfo.ESRDeltaMillivolt * 1000L) / sBatteryOrLoggerInfo.Milliampere;
+        if (tESRMilliohm > __UINT16_MAX__) {
+            tESRMilliohm = __UINT16_MAX__; // indicate overflow
+        }
+        uint32_t tESRAverageAccumulator = tESRMilliohm;
+        for (uint_fast8_t i = HISTORY_SIZE_FOR_ESR_AVERAGE; i > 0; --i) {
+            // shift i-1 to i and add to average
 #if defined(LOCAL_TRACE)
             Serial.print(sESRHistory[i - 1]);
             Serial.print('+');
 #endif
-                tESRAverageHistoryCounter++; // count only valid entries
-                tESRAverageAccumulator += sESRHistory[i - 1];
-                sESRHistory[i] = sESRHistory[i - 1];
-            }
+            tESRAverageAccumulator += sESRHistory[i - 1];
+            sESRHistory[i] = sESRHistory[i - 1];
         }
-        // insert current value
-        uint32_t tESRMilliohm = (sBatteryOrLoggerInfo.ESRDeltaMillivolt * 1000L) / sBatteryOrLoggerInfo.Milliampere;
-        if (tESRMilliohm > __UINT16_MAX__) {
-            sESRHistory[0] = __UINT16_MAX__; // indicate overflow
-        } else {
-            sESRHistory[0] = tESRMilliohm;
+
+        // keep track of number of valid inputs
+        if (sESRHistoryLength < HISTORY_SIZE_FOR_ESR_AVERAGE) {
+            sESRHistoryLength++;
         }
+        // insert current value in free space
+        sESRHistory[0] = tESRMilliohm;
+
 #if defined(LOCAL_TRACE)
     Serial.print(tESRMilliohm);
     Serial.print('=');
@@ -2374,13 +2434,12 @@ void getBatteryValues() {
     Serial.println();
 #endif
 
-        tESRAverageAccumulator += sESRHistory[0];
-        sBatteryOrLoggerInfo.ESRMilliohm = (tESRAverageAccumulator + (tESRAverageHistoryCounter / 2)) / tESRAverageHistoryCounter;
+        sBatteryOrLoggerInfo.ESRMilliohm = (tESRAverageAccumulator + (sESRHistoryLength / 2)) / sESRHistoryLength;
 
 #if defined(LOCAL_TRACE)
     Serial.print(sESRHistory[0]);
     Serial.print('/');
-    Serial.print(tESRAverageHistoryCounter);
+    Serial.print(sESRHistoryLength);
     Serial.print('=');
     Serial.print(sBatteryOrLoggerInfo.ESRMilliohm);
     Serial.println();
@@ -2510,6 +2569,7 @@ void checkAndHandleStopConditionLCD() {
         _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS); // show "stopped"
         myLCD.setCursor(7, 0);
         myLCD.print(F(" Finished"));
+        _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS); // show "Finished" - at least for logger, which overwrites it directly
 #endif
 // Play short melody
         playEndTone();
@@ -2586,7 +2646,7 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
 #endif
         } else {
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-            if (!sOnlyPlotterOutput) {
+            if (!sOnlyPlotterOutput) { // do not disturb Arduino plotter with BD output
                 BlueDisplay1.writeString(F("\rNo U or I       "));
             }
 #endif
@@ -2607,7 +2667,7 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
              */
             if (sBatteryOrLoggerInfo.BatteryTypeIndex == TYPE_INDEX_NO_BATTERY) {
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-                if (!sOnlyPlotterOutput) {
+                if (!sOnlyPlotterOutput) { // do not disturb Arduino plotter with BD output
                     BlueDisplay1.writeString(F("\rNo battery      "));
                 }
 #endif
@@ -2630,12 +2690,13 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
                 BlueDisplay1.writeString(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].TypeName);
 #endif
 #if defined(USE_LCD)
-                myLCD.setCursor(0, 1);
-                myLCD.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].TypeName);
-                myLCD.print(F(" found"));
-// The current battery voltage is displayed, so clear "No batt." message selectively
+                // The current battery voltage is displayed, so clear "No batt." message selectively
                 myLCD.setCursor(7, 0);
                 myLCD.print(F("         "));
+
+                myLCD.setCursor(0, 1);
+                myLCD.print(F("Found "));
+                myLCD.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].TypeName);
                 _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
                 LCDClearLine(1);
 #endif
@@ -2658,6 +2719,11 @@ void detectVoltageOrCurrentRemoved() {
             && (!sTesterInfo.inLoggerModeAndFlags || (sTesterInfo.inLoggerModeAndFlags & LOGGER_EXTERNAL_VOLTAGE_DETECTED))))) {
         if (sTesterInfo.NumbersOfInitialSamplesToGo == NUMBER_OF_INITIAL_SAMPLES) {
             // no current after voltage detection, discharge resistor not connected?
+#if defined(SUPPORT_BLUEDISPLAY_CHART)
+            if (!sOnlyPlotterOutput) { // do not disturb Arduino plotter with BD output
+                BlueDisplay1.writeString(F("\rNo current !    "));
+            }
+#endif
 #if defined(USE_LCD)
             myLCD.setCursor(0, 1);
             myLCD.print(F("No current ! "));
@@ -2915,6 +2981,9 @@ void forceDisplayOfCurrentValues() {
     sLastDiplayedValues.VoltageNoLoadMillivolt = __INT16_MAX__;
     sLastDiplayedValues.Milliampere = __INT16_MAX__;
     sLastDiplayedValues.ESRMilliohm = __INT16_MAX__;
+#if defined(SUPPORT_BLUEDISPLAY_CHART)
+    clearValueArea();
+#endif
 }
 
 /*
@@ -3206,11 +3275,14 @@ Serial.println();
         ChartStartValues.LoadResistorMilliohm = sCurrentLoadResistorAverage;
         ChartStartValues.CutoffLevel = sBatteryOrLoggerInfo.CutoffLevel;
         ChartStartValues.BatteryTypeIndex = sBatteryOrLoggerInfo.BatteryTypeIndex;
-        ChartStartValues.inLoggerModeAndFlags = sTesterInfo.inLoggerModeAndFlags;
+        ChartStartValues.inLoggerModeAndFlags = sTesterInfo.inLoggerModeAndFlags & LOGGER_MODE_MASK;
 
         // sBatteryOrLoggerInfo.CapacityMilliampereHour is set to 0 in handleEndOfStateInitialSamples()
         ChartStartValues.CapacityMilliampereHour = 0; // Overwrite old capacity value of last EEPROM data set. Capacity is also written at the end
         eeprom_update_block(&ChartStartValues, &EEPROMStartValues, sizeof(EEPROMStartValues));
+#if defined(SUPPORT_BLUEDISPLAY_CHART)
+        redrawDisplay();
+#endif
 
 #if defined(LOCAL_TRACE)
     dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
@@ -3230,6 +3302,8 @@ Serial.println();
         ValuesForDeltaStorage.lastStoredMilliohm = aMilliohm;
 
     } else {
+        forceDisplayOfCurrentValues();
+
         /*
          * Append value to delta values array
          */
@@ -3397,7 +3471,7 @@ dumpEEPROM((uint8_t*) &EEPROMStartValues, 1);
  * @param aChartValueArrayIndex  The index of sChartValueArray where the current processed EEPROM value is written to
  * @param aIsLastElement    If true, print BlueDisplay chart or Arduino plotter caption
  */
-void printChartAndPlotterGraph(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
+void printEEPROMChartAndPlotterGraph(uint16_t aMillivoltToPrint, uint16_t aMilliampereToPrint, uint16_t aMilliohmToPrint,
         uint16_t aChartValueArrayIndex, bool aIsLastElement) {
 #if defined(ARDUINO_2_0_PLOTTER_FORMAT)
 Serial.print(F("Voltage:"));
@@ -3452,21 +3526,25 @@ Serial.println(aIsLastElement);
 // input is millivolt convert to 20 for one volt
         if (sChartReadValueArrayType == TYPE_VOLTAGE) {
 // Voltage
-            sChartValueArray[aChartValueArrayIndex] = (aMillivoltToPrint - sCompressionOffsetMillivolt) / sCompressionFactor;
+            sChartValueArray[aChartValueArrayIndex] = (aMillivoltToPrint - sCompressionOffsetMillivolt)
+                    / sVoltageChartCompressionFactor;
         } else if (sChartReadValueArrayType == TYPE_ESR) {
-            sChartValueArray[aChartValueArrayIndex] = (aMilliohmToPrint) / sCompressionFactor;
+            sChartValueArray[aChartValueArrayIndex] = (aMilliohmToPrint * 10) / sCompressionFactorTimes10;
         } else {
             // TYPE_CURRENT
-            sChartValueArray[aChartValueArrayIndex] = (aMilliampereToPrint) / sCompressionFactor;
+            sChartValueArray[aChartValueArrayIndex] = (aMilliampereToPrint * 10) / sCompressionFactorTimes10;
         }
 
         if (aIsLastElement) {
+            /*
+             * Here the array is filled up, so draw chart at BlueDisplay Host
+             */
 #    if defined(LOCAL_DEBUG)
         Serial.println();
         Serial.print(F("ChartReadValueArrayType="));
         Serial.print(sChartReadValueArrayType);
-        Serial.print(F(" sCompressionFactor="));
-        Serial.print(sCompressionFactor);
+        Serial.print(F(" sCompressionFactor*10="));
+        Serial.print(sCompressionFactorTimes10);
         Serial.println();
 #    endif
             if (sChartReadValueArrayType == TYPE_VOLTAGE) {
@@ -3580,6 +3658,9 @@ Serial.println(aIsLastElement);
             Serial.print(F("min Cutoff="));
             Serial.print(sBatteryOrLoggerInfo.CutoffVoltageMillivolt);
             Serial.print(F("mV"));
+            if (ChartStartValues.inLoggerModeAndFlags) {
+                Serial.print(F("_Logger"));
+            }
 
         } else {
             Serial.print(aMillivoltToPrint);
@@ -3710,18 +3791,18 @@ Serial.print(sChartReadValueArrayType);
      ****************************************************/
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (!aInitializeValuesForDisplayAndAppend) {  // Check is only required for SUPPORT_BLUEDISPLAY_CHART
-        printChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false); // store at ChartValueArrayIndex 0
-        Serial.println();  // for first line from printChartAndPlotterGraph
+        printEEPROMChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false); // store at ChartValueArrayIndex 0
+        Serial.println();  // for first line from printEEPROMChartAndPlotterGraph
     }
 #else
-    printChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false); // print always at non BD mode
-    Serial.println(); // for first line from printChartAndPlotterGraph
+    printEEPROMChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false); // print always at non BD mode
+    Serial.println(); // for first line from printEEPROMChartAndPlotterGraph
 #endif
 
     /*******************************************
      * Loop to read and print all EEPROM values
      *******************************************/
-    // tChartValueArrayIndex is not really required for non BD / only plotter mode, but it is used as parameter for printChartAndPlotterGraph(), so keep it.
+    // tChartValueArrayIndex is not really required for non BD / only plotter mode, but it is used as parameter for printEEPROMChartAndPlotterGraph(), so keep it.
     uint16_t tChartValueArrayIndex = 1; // The index of sChartValueArray where the current processed EEPROM value is written to
     for (int i = 0; i < tFirstNonWrittenIndex; ++i) { // tFirstNonWrittenIndex can be from 0 to MAX_NUMBER_OF_SAMPLES
 
@@ -3729,7 +3810,7 @@ Serial.print(sChartReadValueArrayType);
         tVoltageMillivolt += tEEPROMData.DeltaMillivolt;
         tMilliampere += tEEPROMData.DeltaMilliampere;
         tMilliohm += tEEPROMData.DeltaESRMilliohm;
-        tCapacityAccumulator += tMilliampere; // putting this into printChartAndPlotterGraph() increases program size
+        tCapacityAccumulator += tMilliampere; // putting this into printEEPROMChartAndPlotterGraph() increases program size
 
 #if defined(LOCAL_TRACE)
     Serial.print(F("EEPROM values="));
@@ -3823,7 +3904,7 @@ Serial.print(sChartReadValueArrayType);
         if (!aInitializeValuesForDisplayAndAppend) // Check is only required for SUPPORT_BLUEDISPLAY_CHART
 #endif
         {
-            printChartAndPlotterGraph(tVoltageForPrint, tMilliampere, tMilliohm, tChartValueArrayIndex,
+            printEEPROMChartAndPlotterGraph(tVoltageForPrint, tMilliampere, tMilliohm, tChartValueArrayIndex,
                     i == (tFirstNonWrittenIndex - 1));
             tChartValueArrayIndex++;
 
@@ -3848,7 +3929,7 @@ Serial.print(sChartReadValueArrayType);
                 }
             }
 #endif
-            Serial.println(); // for line from printChartAndPlotterGraph plus optional tPrintDelayed text above
+            Serial.println(); // for line from printEEPROMChartAndPlotterGraph plus optional tPrintDelayed text above
         }
     } // End of read loop
 
@@ -4251,7 +4332,7 @@ void initBatteryChart() {
 }
 
 /*
- * Content and labels of chart is written in printChartAndPlotterGraph()
+ * Content and labels of chart is written in printEEPROMChartAndPlotterGraph()
  */
 void clearAndDrawChart() {
     VoltageChart.clear();
@@ -4288,6 +4369,7 @@ void drawButtons() {
 
 /*
  * Message area is not cleared here, it is cleared by overwrite
+ * It removes display of count
  */
 void clearValueArea() {
     BlueDisplay1.fillRectRel(0, 0, BlueDisplay1.getRequestedDisplayWidth(), MESSAGE_START_POSITION_Y - 1, sBackgroundColor);
@@ -4335,8 +4417,7 @@ void readAndDrawEEPROMValues() {
         tMillivoltPerGrid *= 2;
     }
 
-    sCompressionFactor = tMillivoltPerGrid / 20;
-    sChartCompressionFactor = sCompressionFactor;
+    sVoltageChartCompressionFactor = tMillivoltPerGrid / 20;
 
     /*
      * Compute Y offset, such, that voltage starts at top of chart
@@ -4349,9 +4430,10 @@ void readAndDrawEEPROMValues() {
     }
     sCompressionOffsetMillivolt = tYGridNumber * tMillivoltPerGrid; // adjust offset to grid boundary
 
-// Parameter: YFactor = sCompressionFactor/1000 = 10/1000 = 0.01 = * 100 -> input is 100 for 1.0 (volt) and resolution is 10 mV
+// Parameter: YFactor = sCompressionFactorTimes10/1000 = 10/1000 = 0.01 = * 100 -> input is 100 for 1.0 (volt) and resolution is 10 mV
 // Parameter: 4, 1 gives e.g. " 3.5" as label
-    VoltageChart.initYLabel(sCompressionOffsetMillivolt / 1000.0, tMillivoltPerGrid / 1000.0, sCompressionFactor / 1000.0, 4, 1);
+    VoltageChart.initYLabel(sCompressionOffsetMillivolt / 1000.0, tMillivoltPerGrid / 1000.0,
+            sVoltageChartCompressionFactor / 1000.0, 4, 1);
 
     VoltageChart.setDataColor(CHART_VOLTAGE_COLOR);
     sChartReadValueArrayType = TYPE_VOLTAGE; // process voltages
@@ -4369,18 +4451,18 @@ void readAndDrawEEPROMValues() {
          * Process ESR
          * Find right compression factor
          * Compression factor of 5 gives maximum of display of 700 mX, 10 -> 1400 mX.
-         * To have full scale we can compare with sChartCompressionFactor * 140
+         * To have full scale we can compare with sVoltageChartCompressionFactor * 140
          * We choose 120 to avoid that the maximum ESR chart value is higher than the maximum chart value of voltage.
          */
-        if (ValuesForChartScaling.maxMilliohm > (sChartCompressionFactor * 1200L)) {
-            sCompressionFactor = sChartCompressionFactor * 100; // E.g. for low battery voltage and high ESR
-        } else if (ValuesForChartScaling.maxMilliohm > ((uint16_t) sChartCompressionFactor * 120)) {
-            sCompressionFactor = sChartCompressionFactor * 10;
-        } else if ((ValuesForChartScaling.maxMilliohm > ((uint16_t) sChartCompressionFactor * 12))
-                || sChartCompressionFactor < 10) {
-            sCompressionFactor = sChartCompressionFactor;
+        if (ValuesForChartScaling.maxMilliohm > (sVoltageChartCompressionFactor * 1200L)) {
+            sCompressionFactorTimes10 = sVoltageChartCompressionFactor * 1000; // E.g. for low battery voltage and high ESR
+        } else if (ValuesForChartScaling.maxMilliohm > ((uint16_t) sVoltageChartCompressionFactor * 120)) {
+            sCompressionFactorTimes10 = sVoltageChartCompressionFactor * 100;
+        } else if ((ValuesForChartScaling.maxMilliohm > ((uint16_t) sVoltageChartCompressionFactor * 12))
+                || sVoltageChartCompressionFactor < 10) {
+            sCompressionFactorTimes10 = sVoltageChartCompressionFactor * 10;
         } else {
-            sCompressionFactor = sChartCompressionFactor / 10;
+            sCompressionFactorTimes10 = sVoltageChartCompressionFactor;
         }
         VoltageChart.setDataColor(CHART_ESR_COLOR);
         sChartReadValueArrayType = TYPE_ESR; // process ESR
@@ -4392,12 +4474,13 @@ void readAndDrawEEPROMValues() {
      * Find right compression factor
      */
     _delay(HELPFUL_DELAY_BETWEEN_DRAWING_CHART_LINES_TO_STABILIZE_USB_CONNECTION);
-    if (ValuesForChartScaling.maxMilliampere > ((uint16_t) sChartCompressionFactor * 120)) {
-        sCompressionFactor = sChartCompressionFactor * 10;
-    } else if ((ValuesForChartScaling.maxMilliampere > ((uint16_t) sChartCompressionFactor * 12)) || sChartCompressionFactor < 10) {
-        sCompressionFactor = sChartCompressionFactor;
+    if (ValuesForChartScaling.maxMilliampere > ((uint16_t) sVoltageChartCompressionFactor * 120L)) {
+        sCompressionFactorTimes10 = sVoltageChartCompressionFactor * 100;
+    } else if ((ValuesForChartScaling.maxMilliampere > ((uint16_t) sVoltageChartCompressionFactor * 12))
+            || sVoltageChartCompressionFactor < 10) {
+        sCompressionFactorTimes10 = sVoltageChartCompressionFactor * 10;
     } else {
-        sCompressionFactor = sChartCompressionFactor / 10;
+        sCompressionFactorTimes10 = sVoltageChartCompressionFactor;
     }
     VoltageChart.setDataColor(CHART_CURRENT_COLOR);
     sChartReadValueArrayType = TYPE_CURRENT; // process current
@@ -4507,6 +4590,7 @@ void printChartValues() {
 /*
  * Version 7.0 - 10/2025
  *  - Changed analog pin assignments for two additional voltage ranges using internal reference.
+ *  - Fixed some bugs in logger mode.
  *
  * Version 6.0 - 9/2025
  *  - Improved logger handling.
