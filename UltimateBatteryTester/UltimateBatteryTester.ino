@@ -94,26 +94,29 @@
 #endif
 //
 /*
- * Activate the type of LCD you use
+ * Choose the type of LCD you use
  * Default is parallel LCD with 2 rows of 16 characters (1602).
  * 2004 Display is and will not be supported. Use BlueDisplay app instead.
  * Serial LCD uses A4/A5 - the hardware I2C pins on Arduino
  */
+//#define USE_PARALLEL_1602_LCD // Is default
+//#define USE_SERIAL_1602_LCD
 //#define USE_NO_LCD
-#if !defined(USE_SERIAL_LCD) && !defined(USE_PARALLEL_LCD) && !defined(USE_NO_LCD)
-// Choose your default LCD type, I have a parallel LCD
-#define USE_PARALLEL_LCD
-//#define USE_SERIAL_LCD
-#endif
-// definitions for a 1602 LCD
-#define LCD_COLUMNS 16
-#define LCD_ROWS 2
-#if defined(USE_SERIAL_LCD) && defined(USE_PARALLEL_LCD)
-#error Cannot use parallel and serial LCD simultaneously
-#endif
-#if defined(USE_SERIAL_LCD) || defined(USE_PARALLEL_LCD)
+#if !defined(USE_NO_LCD)
 #define USE_LCD
-#endif
+#include "LCDPrintUtils.hpp" // sets USE_PARALLEL_LCD or USE_SERIAL_LCD
+#  if defined(USE_SERIAL_LCD)
+#define USE_SOFT_I2C_MASTER // Requires SoftI2CMaster.h + SoftI2CMasterConfig.h. Saves 2110 bytes program memory and 200 bytes RAM compared with Arduino Wire
+#include "LiquidCrystal_I2C.hpp"  // This defines USE_SOFT_I2C_MASTER, if SoftI2CMasterConfig.h is available. Use only the modified version delivered with this program!
+LiquidCrystal_I2C myLCD(0x27, LCD_COLUMNS, LCD_ROWS);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+#  else
+#include "LiquidCrystal.h"
+//LiquidCrystal myLCD(2, 3, 4, 5, 6, 7);
+//LiquidCrystal myLCD(7, 8, A0, A1, A2, A3);
+LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
+#  endif
+#endif //!defined(USE_NO_LCD)
+#define LCD_MESSAGE_PERSIST_TIME_MILLIS     2000 // 2 second to view a message on LCD - is also used in delayAndCheckForButtonPress()
 
 /*
  * Pin and ADC definitions
@@ -134,21 +137,20 @@
 #define LOWEST_VOLTAGE_RANGE_PORT_MASK_DUMMY    0x01 // Mask for PC0! not applied to hardware.
 #define VOLTAGE_RANGE_PORT_MASK                 0xE0 // PC1 to PC3
 
-#if defined(USE_PARALLEL_LCD)
-#define LOAD_HIGH_PIN                           A4 // PC4 This pin is high to switch on the high load (3 ohm)
-#define LOAD_HIGH_PIN_MASK                      0x10 // Output PC4
-#define BUZZER_PIN                              A5 // PC5
-#define BUZZER_PIN_MASK                         0x20 // Output PC4
-#define OTHER_OUTPUTS_PIN_MASK                  (LOAD_HIGH_PIN_MASK | BUZZER_PIN_MASK)
-
-#else
-// USE_SERIAL_LCD here
+#if defined(USE_SERIAL_LCD)
 // A4 + A5, the hardware I2C pins on Arduino, are used for Serial LCD, so we must redefine this 2 pins
 #define LOAD_HIGH_PIN                           4 // This pin is high to switch on the high load (3 ohm)
 #define BUZZER_PIN                              3
 #define BUZZER_PIN_MASK                         0 // no Buzzer at Analog pins
 #define OTHER_OUTPUTS_PIN_MASK                  0 // Alternate functions for Pin 4 + 5
-#endif // defined(USE_PARALLEL_LCD)
+#else
+// Parallel LCD here
+#define LOAD_HIGH_PIN                           A4 // PC4 This pin is high to switch on the high load (3 ohm)
+#define LOAD_HIGH_PIN_MASK                      0x10 // Output PC4
+#define BUZZER_PIN                              A5 // PC5
+#define BUZZER_PIN_MASK                         0x20 // Output PC4
+#define OTHER_OUTPUTS_PIN_MASK                  (LOAD_HIGH_PIN_MASK | BUZZER_PIN_MASK)
+#endif // defined(USE_SERIAL_LCD)
 
 // Mode pins
 #define ONLY_PLOTTER_OUTPUT_PIN      9 // Verbose output to Arduino Serial Monitor is disabled, if connected to ground. This is intended for Arduino Plotter mode.
@@ -410,27 +412,6 @@ void printChartValues();
 void printCapacityValue();
 void readAndDrawEEPROMValues();
 #endif // SUPPORT_BLUEDISPLAY_CHART
-
-/*******
- * LCD
- *******/
-#define LCD_MESSAGE_PERSIST_TIME_MILLIS     2000 // 2 second to view a message on LCD
-#if defined(USE_SERIAL_LCD)
-#define USE_SOFT_I2C_MASTER // Requires SoftI2CMaster.h + SoftI2CMasterConfig.h. Saves 2110 bytes program memory and 200 bytes RAM compared with Arduino Wire
-#include "LiquidCrystal_I2C.hpp"  // This defines USE_SOFT_I2C_MASTER, if SoftI2CMasterConfig.h is available. Use only the modified version delivered with this program!
-#endif
-#if defined(USE_PARALLEL_LCD)
-#include "LiquidCrystal.h"
-#endif
-
-#if defined(USE_SERIAL_LCD)
-LiquidCrystal_I2C myLCD(0x27, LCD_COLUMNS, LCD_ROWS);  // set the LCD address to 0x27 for a 16 chars and 2 line display
-#endif
-#if defined(USE_PARALLEL_LCD)
-//LiquidCrystal myLCD(2, 3, 4, 5, 6, 7);
-//LiquidCrystal myLCD(7, 8, A0, A1, A2, A3);
-LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
-#endif
 
 //#define ENABLE_STACK_ANALYSIS
 #if defined(ENABLE_STACK_ANALYSIS)
@@ -749,10 +730,8 @@ void switchToStateSampleAndStoreToEEPROM(uint16_t aInitialSampleCountForStoring)
 void switchToStateStopped(char aReasonCharacter);
 
 #if defined(USE_LCD)
-void LCDPrintAsFloatAs5CharacterString(uint16_t aValueInMillivolts);
 void LCDPrintVCC(uint8_t aLCDLine);
 void LCDResetCursor();
-void LCDClearLine(uint8_t aLineNumber);
 #endif
 
 /*
@@ -853,19 +832,19 @@ void setup() {
     /*
      * LCD initialization
      */
+
 #  if defined(USE_SERIAL_LCD)
     myLCD.init();
     myLCD.clear();
     myLCD.backlight(); // Switch backlight LED on
-#  endif
-#  if defined(USE_PARALLEL_LCD)
+#  else
     myLCD.begin(LCD_COLUMNS, LCD_ROWS);
 #  endif
 
     /*
      * LCD print program, version and date
      */
-    LCDResetCursor();
+    LCDResetCursor(&myLCD);
     myLCD.print(F("Battery Tester "));
     myLCD.setCursor(0, 1);
     myLCD.print(F(VERSION_EXAMPLE "  " __DATE__));
@@ -920,7 +899,7 @@ void setup() {
             myLCD.print(F("Only logger mode"));
             _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
         }
-        LCDClearLine(1); // Clear line "No plotter out  " or "Only logger mode"
+        LCDClearLine(&myLCD, 1); // Clear line "No plotter out  " or "Only logger mode"
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     }
 #endif
@@ -1158,7 +1137,7 @@ void handlePeriodicDetectionOfProbe() {
                     sTesterInfo.VoltageNoLoadIsDisplayedOnLCD = false;
                 }
 #  if defined(USE_LCD)
-                LCDClearLine(1); // Clear line "append to EEPROM"
+                LCDClearLine(&myLCD, 1); // Clear line "append to EEPROM"
 #  endif
 #endif
                 sTesterInfo.NumbersOfInitialSamplesToGo = NUMBER_OF_INITIAL_SAMPLES;
@@ -1230,7 +1209,7 @@ void handleEndOfStateInitialSamples() {
         }
 #endif
 #if defined(USE_LCD)
-        LCDResetCursor();
+        LCDResetCursor(&myLCD);
         myLCD.print(F("Voltage too low "));
         myLCD.setCursor(0, 1);
         myLCD.print(F("for std capacity"));
@@ -1479,47 +1458,23 @@ void switchToStateStopped(char aReasonCharacter) {
 #endif
 
 #if defined(USE_LCD)
-    LCDResetCursor();
+    LCDResetCursor(&myLCD);
     myLCD.print(F("Stop measurement"));
     _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
-    LCDClearLine(0);
+    LCDClearLine(&myLCD, 0);
 #endif
     if (tOldMeasurementState == STATE_SAMPLE_AND_STORE_TO_EEPROM) {
         storeCapacityAndCutoffLevelToEEPROM_LCD(); // Store capacity and cut off level
     }
 
 #if defined(USE_LCD)
-    LCDResetCursor();
+    LCDResetCursor(&myLCD);
     myLCD.print(F("       Stopped "));
     myLCD.print(aReasonCharacter);
 #endif
 }
 
 #if defined(USE_LCD)
-void LCDClearLine(uint8_t aLineNumber) {
-    myLCD.setCursor(0, aLineNumber);
-    myLCD.print("                    ");
-    myLCD.setCursor(0, aLineNumber);
-}
-
-/*
- * Use 2 decimals, if value is >= 10
- */
-void LCDPrintAsFloatAs5CharacterString(uint16_t aValueInMillivolts) {
-    if (aValueInMillivolts < 10000) {
-        myLCD.print(((float) (aValueInMillivolts)) / 1000, 3);
-    } else {
-        myLCD.print(((float) (aValueInMillivolts)) / 1000, 2);
-    }
-}
-
-/*
- * Saves 66 bytes :-)
- */
-void LCDResetCursor() {
-    myLCD.setCursor(0, 0);
-}
-
 void LCDPrintVCC(uint8_t aLCDLine) {
     myLCD.setCursor(0, aLCDLine);
     sVCCVoltageMillivolt = getVCCVoltageMillivolt();
@@ -1531,7 +1486,7 @@ void LCDPrintVCC(uint8_t aLCDLine) {
  * Cutoff functions
  *******************/
 void LCDPrintCutoff() {
-    LCDResetCursor();
+    LCDResetCursor(&myLCD);
     myLCD.print(F("Cutoff "));
     if (sTesterInfo.inLoggerModeAndFlags) {
         myLCD.print(F("is "));
@@ -1577,7 +1532,7 @@ void LCDPrintCutoff() {
 
     }
     _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
-    LCDClearLine(0);
+    LCDClearLine(&myLCD, 0);
     forceDisplayOfCurrentValues();
 }
 #endif
@@ -1728,7 +1683,7 @@ void printButtonUsageMessageLCD() {
     }
 #endif
 #if defined(USE_LCD)
-    LCDResetCursor();
+    LCDResetCursor(&myLCD);
     myLCD.print(F("dbl press = stop"));
     /*
      * and wait for 2 seconds for button press
@@ -1745,7 +1700,7 @@ void printButtonUsageMessageLCD() {
 #if defined(USE_LCD)
         // append is only possible, if logger modes are equal
         if ((ChartStartValues.inLoggerModeAndFlags & LOGGER_MODE_MASK) == sTesterInfo.inLoggerModeAndFlags) {
-            LCDResetCursor();
+            LCDResetCursor(&myLCD);
             myLCD.print(F("Press button to "));
             myLCD.setCursor(0, 1);
             myLCD.print(F("append to EEPROM"));
@@ -1855,7 +1810,7 @@ void handleStartStopButtonPress(bool aButtonToggleState) {
              */
             uint8_t tOldMeasurementState = sTesterInfo.MeasurementState;
 #if defined(USE_LCD)
-            LCDResetCursor();
+            LCDResetCursor(&myLCD);
 #endif
             if (tOldMeasurementState == STATE_STOPPED) {
 #if !defined(SUPPRESS_SERIAL_PRINT)
@@ -2698,7 +2653,7 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
                 myLCD.print(F("Found "));
                 myLCD.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].TypeName);
                 _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
-                LCDClearLine(1);
+                LCDClearLine(&myLCD, 1);
 #endif
                 tBatteryOrCurrentOrVoltageWasDetected = true;
             }
@@ -2777,8 +2732,8 @@ void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
 #endif
 
 #if defined(USE_LCD)
-        LCDResetCursor();
-        LCDPrintAsFloatAs5CharacterString(tVoltageNoLoadMillivolt);
+        LCDResetCursor(&myLCD);
+        LCDPrintAsFloatAs5CharacterString(&myLCD, tVoltageNoLoadMillivolt);
         myLCD.print('V'); // no trailing space because of counters which can be more than 1000
         sTesterInfo.VoltageNoLoadIsDisplayedOnLCD = true;
 // cursor is now at 7, 0
@@ -2860,7 +2815,7 @@ void printESR() {
 #if defined(USE_LCD)
         myLCD.setCursor(0, 1);
         if (sTesterInfo.inLoggerModeAndFlags) {
-            LCDPrintAsFloatAs5CharacterString(sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt);
+            LCDPrintAsFloatAs5CharacterString(&myLCD, sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt);
             myLCD.print(F("V"));
         } else {
             float tOhmFloat;
@@ -3153,7 +3108,7 @@ void printMeasurementValuesLCD_BD() {
 #  endif
 #  if defined(USE_LCD)
                 myLCD.print(F("  ")); // leading spaces only for voltage
-                LCDPrintAsFloatAs5CharacterString(tESRDeltaMillivolt);
+                LCDPrintAsFloatAs5CharacterString(&myLCD, tESRDeltaMillivolt);
                 myLCD.print(F("V"));
 #  endif
             }
@@ -3453,7 +3408,7 @@ void storeCapacityAndCutoffLevelToEEPROM_LCD() {
     BlueDisplay1.writeString(F("\rCapacity stored ")); // space to overwrite e.g. "LiIo 2pack"
 #endif
 #if defined(USE_LCD)
-    LCDResetCursor();
+    LCDResetCursor(&myLCD);
     myLCD.print(F("Capacity stored "));
     _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
 #endif
@@ -4588,6 +4543,10 @@ void printChartValues() {
 #endif // defined(SUPPORT_BLUEDISPLAY_CHART)
 
 /*
+ * Ideas for Version 8.0
+ * - no arduino serial, only BD status line
+ * - constants like shunt resistor as variables (float?), to be set by user
+ *
  * Version 7.0 - 10/2025
  *  - Changed analog pin assignments for two additional voltage ranges using internal reference.
  *  - Fixed some bugs in logger mode.

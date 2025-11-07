@@ -27,15 +27,15 @@ jobs:
         # The matrix will produce one job for each configuration parameter of type `build-properties`
         build-properties:
           - -DUSE_NO_LCD
-          - -DUSE_SERIAL_LCD # LiquidCrystal_I2C.hpp is part of example
-          - -DUSE_PARALLEL_LCD # default
+          - -DUSE_SERIAL_1602_LCD # LiquidCrystal_I2C.hpp is part of example
+          - -DUSE_PARALLEL_1602_LCD # default
           - -DBUTTON_IS_ACTIVE_HIGH
           - -DSUPPORT_BLUEDISPLAY_CHART
         include:
           - build-properties: -DUSE_NO_LCD
             required-libraries: LiquidCrystal # workaround, because Arduino cli wants this library in this case :-(
 
-          - build-properties: -DUSE_PARALLEL_LCD
+          - build-properties: -DUSE_PARALLEL_1602_LCD
             required-libraries: LiquidCrystal
 
           - build-properties: -DSUPPORT_BLUEDISPLAY_CHART

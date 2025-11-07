@@ -106,9 +106,9 @@ void printTimeAtOneLine(uint16_t const aPositionX, uint16_t const aPositionY, ui
 #pragma GCC diagnostic pop
 #  else
     time_t tTimestamp = now(); // use this timestamp for all prints below
-// We can ignore warning: '%02d' directive writing between 2 and 11 bytes into a region of size between 0 and 1 [-Wformat-overflow=]
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-overflow"
+    // We can ignore warning: '%02d' directive writing between 2 and 11 bytes into a region of size between 0 and 1 [-Wformat-overflow=]
     snprintf_P(tStringBuffer, sizeof(tStringBuffer), PSTR("%02d.%02d.%4d %02d:%02d:%02d"), day(tTimestamp), month(tTimestamp),
             year(tTimestamp), hour(tTimestamp), minute(tTimestamp), second(tTimestamp));
 #pragma GCC diagnostic pop
