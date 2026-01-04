@@ -39,7 +39,7 @@
  *  Both values are written to EEPROM. Zero ESR value is written too, but is not displayed in logger mode.
  *
  *
- *  Copyright (C) 2021-2025  Armin Joachimsmeyer
+ *  Copyright (C) 2021-2026  Armin Joachimsmeyer
  *  armin.joachimsmeyer@gmail.com
  *
  *  https://github.com/ArminJo/Ultimate-Battery-Tester
@@ -947,6 +947,7 @@ void setup() {
     /*
      * If battery is still inserted, keep cut off level read from EEPROM data for easy append.
      * If battery was removed, cut off level can be chosen by pressing stop button.
+     * If battery was changed, we still have the old BatteryTypeIndex here, showing the old cutoff voltage
      */
     getVoltageMillivolt();
     if (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt < NO_BATTERY_MILLIVOLT) {
@@ -1516,21 +1517,21 @@ void LCDPrintCutoff() {
             uint8_t tDecimals = 1;
             // Short text with voltage e.g. "Cutoff high 3.5V"
             if (tCutoffLevel == CUTOFF_LEVEL_LOW) {
-                myLCD.print(F("low"));
+                myLCD.print(F("low "));
                 tDecimals = 2;
             } else if (tCutoffLevel == CUTOFF_LEVEL_ZERO) {
                 if (tSwitchOffVoltageMillivolt < 1000) {
-                    myLCD.print(F("z "));
-                    // print "z  0.070V" instead of "zero 1.1V"
+                    myLCD.print(F("z  "));
+                    // print "z   0.070V" instead of "zero 1.1V"
                     tDecimals = 3;
                 } else {
-                    myLCD.print(F("zero"));
+                    myLCD.print(F("zero ")); // tDecimals = 1;
                 }
             } else { // CUTOFF_LEVEL_HIGH
-                myLCD.print(F("high"));
+                myLCD.print(F("high ")); // tDecimals = 1;
             }
-            if (10000 > tSwitchOffVoltageMillivolt) {
-                myLCD.print(' ');
+            if (tSwitchOffVoltageMillivolt >= 10000) {
+                tDecimals--;
             }
             myLCD.print(tSwitchOffVoltageMillivolt / 1000.0, tDecimals);
             myLCD.print('V');
@@ -2739,7 +2740,7 @@ void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
 
 #if defined(USE_LCD)
         LCDResetCursor(&myLCD);
-        LCDPrintAsFloatAs5CharacterString(&myLCD, tVoltageNoLoadMillivolt);
+        LCDPrintAsFloatAs5CharacterString_2_3_Decimals(&myLCD, tVoltageNoLoadMillivolt);
         myLCD.print('V'); // no trailing space because of counters which can be more than 1000
         sTesterInfo.VoltageNoLoadIsDisplayedOnLCD = true;
 // cursor is now at 7, 0
@@ -2821,7 +2822,7 @@ void printESR() {
 #if defined(USE_LCD)
         myLCD.setCursor(0, 1);
         if (sTesterInfo.inLoggerModeAndFlags) {
-            LCDPrintAsFloatAs5CharacterString(&myLCD, sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt);
+            LCDPrintAsFloatAs5CharacterString_2_3_Decimals(&myLCD, sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt);
             myLCD.print(F("V"));
         } else {
             float tOhmFloat;
@@ -3114,7 +3115,7 @@ void printMeasurementValuesLCD_BD() {
 #  endif
 #  if defined(USE_LCD)
                 myLCD.print(F("  ")); // leading spaces only for voltage
-                LCDPrintAsFloatAs5CharacterString(&myLCD, tESRDeltaMillivolt);
+                LCDPrintAsFloatAs5CharacterString_2_3_Decimals(&myLCD, tESRDeltaMillivolt);
                 myLCD.print(F("V"));
 #  endif
             }
@@ -4204,14 +4205,14 @@ Serial.println(BlueDisplay1.getHostDisplayHeight());
     tBDButtonPGMParameterStruct.aPGMText = F("Append");
     tBDButtonPGMParameterStruct.aWidthX = BUTTON_WIDTH - BASE_TEXT_SIZE;
     TouchButtonAppend.init(&tBDButtonPGMParameterStruct);
-    tBDButtonPGMParameterStruct.aPositionX = BUTTONS_START_X;
 
+    tBDButtonPGMParameterStruct.aPositionX = BUTTONS_START_X; // Reset x position
 //    TouchButtonAppend.init(BUTTONS_START_X + BUTTON_WIDTH + (BASE_TEXT_SIZE / 8), tBDButtonPGMParameterStruct.aPositionY,
 //    BUTTON_WIDTH - BASE_TEXT_SIZE, BASE_TEXT_SIZE + BASE_TEXT_SIZE / 3, COLOR16_GREEN, "Append", 44, FLAG_BUTTON_DO_BEEP_ON_TOUCH,
 //            sTesterInfo.inLoggerModeAndFlags, &doAppend);
 
 // 58 bytes
-    tBDButtonPGMParameterStruct.aWidthX = BUTTON_WIDTH + (BASE_TEXT_SIZE * 4);
+    tBDButtonPGMParameterStruct.aWidthX = (2 * BUTTON_WIDTH) + (BASE_TEXT_SIZE / 4) - BASE_TEXT_SIZE; // size + distance of state and cutoff button
     tBDButtonPGMParameterStruct.aPositionY += BASE_TEXT_SIZE + (BASE_TEXT_SIZE / 2);
     tBDButtonPGMParameterStruct.aOnTouchHandler = &doCutoffHighLowZero;
     TouchButtonCutoffHighLowZero.init(&tBDButtonPGMParameterStruct);

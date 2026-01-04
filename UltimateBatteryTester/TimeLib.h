@@ -21,7 +21,9 @@
 typedef unsigned long time_t;
 #endif
 
+#if !defined(SYS_TIME_IS_NOT_INCREMENTED_BY_MILLIS)
 extern uint32_t prevMillis;
+#endif
 
 // This ugly hack allows us to define C++ overloaded functions, when included
 // from within an extern "C", as newlib's sys/stat.h does.  Actually it is

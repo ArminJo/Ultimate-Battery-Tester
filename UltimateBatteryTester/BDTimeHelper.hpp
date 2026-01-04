@@ -32,11 +32,33 @@
 #ifndef _BD_TIME_HELPER_HPP
 #define _BD_TIME_HELPER_HPP
 
+#if !defined(MILLIS_IN_ONE_SECOND)
+#define MILLIS_IN_ONE_SECOND    1000U
+#endif
+#if !defined(SECONDS_IN_ONE_MINUTE)
+#define SECONDS_IN_ONE_MINUTE   60U
+#endif
+#if !defined(SECONDS_IN_ONE_HOUR)
+#define SECONDS_IN_ONE_HOUR     3600U
+#endif
+#if !defined(SECONDS_IN_ONE_DAY)
+#define SECONDS_IN_ONE_DAY      86400UL
+#endif
+#if !defined(MINUTES_IN_ONE_HOUR)
+#define MINUTES_IN_ONE_HOUR     60U
+#endif
+#if !defined(MINUTES_IN_ONE_DAY)
+#define MINUTES_IN_ONE_DAY      1440U
+#endif
+#if !defined(HOURS_IN_ONE_DAY)
+#define HOURS_IN_ONE_DAY        24U
+#endif
+
 #if !defined(TIME_EVENTCALLBACK_FUNCTION)
 #define TIME_EVENTCALLBACK_FUNCTION     getTimeEventMinimalCallback
 #endif
 #if !defined(BD_TIME_SYNCHRONISATION_INTERVAL_SECONDS)
-#define BD_TIME_SYNCHRONISATION_INTERVAL_SECONDS    SECS_PER_DAY // get a fresh timestamp every day
+#define BD_TIME_SYNCHRONISATION_INTERVAL_SECONDS    SECONDS_IN_ONE_DAY // get a fresh timestamp every day
 #endif
 #define WAIT_FOR_TIME_SYNC_MAX_MILLIS               150 // Wait for requested time event but terminate at least after 150 ms
 
@@ -50,17 +72,14 @@
 struct tm *sTimeInfo;
 bool sTimeInfoWasJustUpdated = false;
 /* Useful Constants */
-#define SECS_PER_MIN  ((time_t)(60UL))
-#define SECS_PER_HOUR ((time_t)(3600UL))
-#define SECS_PER_DAY  ((time_t)(SECS_PER_HOUR * 24UL))
-//#define DAYS_PER_WEEK ((time_t)(7UL))
-//#define SECS_PER_WEEK ((time_t)(SECS_PER_DAY * DAYS_PER_WEEK))
-//#define SECS_PER_YEAR ((time_t)(SECS_PER_DAY * 365UL)) // TODO: ought to handle leap years
-//#define SECS_YR_2000  ((time_t)(946684800UL)) // the time at the start of y2k
+#define DAYS_PER_WEEK ((time_t)(7UL))
+#define SECS_PER_WEEK ((time_t)(SECONDS_IN_ONE_DAY * DAYS_PER_WEEK))
+#define SECS_PER_YEAR ((time_t)(SECONDS_IN_ONE_DAY * 365UL)) // TODO: ought to handle leap years
+#define SECS_YR_2000  ((time_t)(946684800UL)) // the time at the start of y2k
 
 uint16_t waitUntilTimeWasUpdated(uint16_t aMaxWaitMillis);
 #else
-#include "TimeLib.h"
+#include "Time.hpp"
 time_t requestHostUnixTimestamp();
 #endif
 
@@ -160,7 +179,7 @@ uint16_t waitUntilTimeWasUpdated(uint16_t aMaxWaitMillis) {
 }
 #  else
 /*
- * Is called every 5 minutes from TimeLib by default
+ * Is set as SyncProvider by initLocalTimeHandling() and then cyclically called from TimeLib
  */
 time_t requestHostUnixTimestamp() {
     BlueDisplay1.getInfo(SUBFUNCTION_GET_INFO_LOCAL_TIME, TIME_EVENTCALLBACK_FUNCTION);

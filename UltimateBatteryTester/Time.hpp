@@ -1,6 +1,6 @@
 /*
   time.c - low level time and date functions
-  Copyright (c) Michael Margolis 2009-2014
+  Copyright (c) Michael Margolis 2009-2026
 
   This library is free software; you can redistribute it and/or
   modify it under the terms of the GNU Lesser General Public
@@ -25,13 +25,13 @@
                      examples, add error checking and messages to RTC examples,
                      add examples to DS1307RTC library.
   1.4  5  Sep 2014 - compatibility with Arduino 1.5.7
+  1.5       1/2026 - AJ changed to Time.hpp and SYS_TIME_IS_NOT_INCREMENTED_BY_MILLIS
 */
 
-#if ARDUINO >= 100
+#ifndef _TIME_HPP
+#define _TIME_HPP
+
 #include <Arduino.h>
-#else
-#include <WProgram.h>
-#endif
 
 #include "TimeLib.h"
 
@@ -234,8 +234,10 @@ time_t makeTime(const tmElements_t &tm){
 /*=====================================================*/
 /* Low level system time functions  */
 
-static uint32_t sysTime = 0;
-uint32_t prevMillis = 0;
+uint32_t sysTime = 0;    // Holding the "UNIX timestamp in seconds".
+#if !defined(SYS_TIME_IS_NOT_INCREMENTED_BY_MILLIS)
+uint32_t prevMillis = 0;        // Holding millis() of last call to now(). Used to increment sysTime.
+#endif
 static uint32_t nextSyncTime = 0;
 static timeStatus_t Status = timeNotSet;
 
@@ -248,6 +250,7 @@ time_t sysUnsyncedTime = 0; // the time sysTime unadjusted by sync
 
 
 time_t now() {
+#if !defined(SYS_TIME_IS_NOT_INCREMENTED_BY_MILLIS)
     // calculate number of seconds passed since last call to now()
   while (millis() - prevMillis >= 1000) {
         // millis() and prevMillis are both unsigned ints thus the subtraction will always be the absolute value of the difference
@@ -257,6 +260,7 @@ time_t now() {
     sysUnsyncedTime++; // this can be compared to the synced time to measure long term drift
 #endif
   }
+#endif
   if (nextSyncTime <= sysTime) {
     if (getTimePtr != 0) {
       time_t t = getTimePtr();
@@ -280,7 +284,9 @@ void setTime(time_t t) {
   sysTime = (uint32_t)t;
   nextSyncTime = (uint32_t)t + syncInterval;
   Status = timeSet;
+#if !defined(SYS_TIME_IS_NOT_INCREMENTED_BY_MILLIS)
   prevMillis = millis();  // restart counting from now (thanks to Korman for this fix)
+#endif
 }
 
 void setTime(int hr,int min,int sec,int dy, int mnth, int yr){
@@ -319,3 +325,4 @@ void setSyncInterval(time_t interval){ // set the number of seconds between re-s
   syncInterval = (uint32_t)interval;
   nextSyncTime = sysTime + syncInterval;
 }
+#endif // _TIME_HPP
