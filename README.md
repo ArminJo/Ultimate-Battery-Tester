@@ -24,7 +24,7 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 
 <br/>
 
-# Table of content
+# Table of contents
 - [Features](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#features)
 - [Li-Ion battery capacity](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#li-ion-battery-capacity)
 - [Battery ESR](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#battery-esr)
@@ -307,6 +307,7 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ### Version 7.0.0
 - Changed analog pin assignments for two additional voltage ranges using internal reference.
 - Fixed some bugs in logger mode.
+- First tap on Brightness button only makes refresh.
 
 ### Version 6.0.0
 - Improved logger handling.

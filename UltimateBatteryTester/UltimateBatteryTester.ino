@@ -321,7 +321,9 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
 #define BRIGHTNESS_LOW      2
 #define BRIGHTNESS_MIDDLE   1
 #define BRIGHTNESS_HIGH     0
-#define START_BRIGHTNESS    BRIGHTNESS_HIGH
+#define START_BRIGHTNESS    BRIGHTNESS_HIGH // 0 is smaller code to initialize
+unsigned long sMillisOfLastRefreshOrChangeBrightness;
+#define TIMEOUT_FOR_BRIGHTNESS_MILLIS      4000 // Before 4 seconds the next touch is interpreted as brightness change request
 uint8_t sCurrentBrightness = START_BRIGHTNESS;
 color16_t sBackgroundColor = COLOR16_WHITE; // for brightness
 color16_t sTextColor = COLOR16_BLACK; // for brightness
@@ -415,7 +417,7 @@ void readAndDrawEEPROMValues();
 
 //#define ENABLE_STACK_ANALYSIS
 #if defined(ENABLE_STACK_ANALYSIS)
-#include "AVRUtils.h" // include for initStackFreeMeasurement() and printRAMInfo()
+#include "AVRUtils.h" // include for initStackFreeMeasurement() and printRAMAndStackInfo()
 #endif
 
 /*********************************************
@@ -695,7 +697,7 @@ void getBatteryValues();
 void checkAndHandleStopConditionLCD();
 void detectVoltageOrCurrentRemoved();
 void playEndTone();
-void playAttentionTone();
+void playUndervoltageAttentionTone();
 void setLoad(uint8_t aNewLoadState);
 void printStoredDataLCD_BD();
 bool printMilliampere4DigitsLCD_BD();
@@ -737,7 +739,10 @@ void switchToStateStopped(char aReasonCharacter);
 
 #if defined(USE_LCD)
 void LCDPrintVCC(uint8_t aLCDLine);
-void LCDResetCursor();
+#endif
+
+#if !defined(uintDifferenceAbs)
+#define uintDifferenceAbs(a, b) ((a >= b) ? a - b : b - a)
 #endif
 
 /*
@@ -872,7 +877,7 @@ void setup() {
 #endif
 
 #if defined(ENABLE_STACK_ANALYSIS)
-        printRAMInfo(&Serial);
+    printRAMAndStackInfo(&Serial);
 #  if !defined(BD_USE_SIMPLE_SERIAL)
         Serial.flush();
 #  endif
@@ -1188,7 +1193,7 @@ void handlePeriodicDetectionOfProbe() {
                  */
                 if (!isVCCUSBPowered() && millis() - sTesterInfo.LastMillisOfStateWaitingForBatteryOrVoltageBeep >= STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS) {
                     sTesterInfo.LastMillisOfStateWaitingForBatteryOrVoltageBeep = millis();
-                    playAttentionTone();
+                    playUndervoltageAttentionTone();
                 }
             }
         }
@@ -1290,7 +1295,7 @@ void handleStateStoppedLCD_BD() {
      */
     if (millis() - sTesterInfo.LastMillisOfStateStoppedForAttentionBeep >= STATE_STOP_ATTENTION_PERIOD_MILLIS) {
         sTesterInfo.LastMillisOfStateStoppedForAttentionBeep = millis();
-        playAttentionTone();
+        playUndervoltageAttentionTone();
     }
 }
 
@@ -2444,7 +2449,7 @@ void playEndTone() {
     delay(1000);
 }
 
-void playAttentionTone() {
+void playUndervoltageAttentionTone() {
     tone(BUZZER_PIN, NOTE_C7, 40);
     delay(100);
     tone(BUZZER_PIN, NOTE_C7, 40);
@@ -2802,7 +2807,7 @@ void printESR() {
     }
 #endif
 
-    if (abs((int16_t)sLastDiplayedValues.ESRMilliohm - (int16_t)tMilliohm) > ESR_DISPLAY_HYSTERESIS_MILLIOHM) {
+    if (uintDifferenceAbs(sLastDiplayedValues.ESRMilliohm, tMilliohm) > ESR_DISPLAY_HYSTERESIS_MILLIOHM) {
         sLastDiplayedValues.ESRMilliohm = tMilliohm;
 
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
@@ -4052,11 +4057,15 @@ void changeBrightness() {
         sCurrentBrightness = BRIGHTNESS_HIGH;
     }
 }
+
 void doBrightness(BDButton *aTheTouchedButton, int16_t aValue) {
     (void) aTheTouchedButton;
     (void) aValue;
-    changeBrightness();
+    if (millis() - sMillisOfLastRefreshOrChangeBrightness < TIMEOUT_FOR_BRIGHTNESS_MILLIS) {
+        changeBrightness();
+    }
     redrawDisplay();
+    sMillisOfLastRefreshOrChangeBrightness = millis();
 }
 
 //void doRedrawChart(BDButton *aTheTouchedButton, int16_t aValue) {
