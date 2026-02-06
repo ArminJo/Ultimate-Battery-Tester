@@ -76,7 +76,7 @@
  * For my Nanos I measured e.g. 1060 mV and 1093 mV.
  */
 #if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT)
-#define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100UL // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
+#define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100 // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
 
 /*
@@ -155,7 +155,6 @@ LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
 // Mode pins
 #define ONLY_PLOTTER_OUTPUT_PIN      9 // Verbose output to Arduino Serial Monitor is disabled, if connected to ground. This is intended for Arduino Plotter mode.
 #define ONLY_LOGGER_MODE_PIN        10 // If connected to ground, current is measured at the shunt at channel 4 / A4 and voltage still at channel 0 / pin A0.
-// If powered by USB verbose verbose output to Arduino Serial Monitor is disabled, if NOT connected to ground.
 #define CUTOFF_LEVEL_PIN            11 // If connected to ground, CUTOFF_LEVEL_LOW is taken as startup default if no battery is inserted at startup.
 #define LOAD_LOW_PIN                12 // This pin is high to switch on the low load (10 ohm). A4 is occupied by I2C for serial LCD display.
 bool sLastValueOfCutoffLevelPin; // To support prints and voltage setting at changing between normal and low by using pin CUTOFF_LEVEL_PIN
@@ -164,17 +163,17 @@ bool sLastValueOfCutoffLevelPin; // To support prints and voltage setting at cha
  * External circuit definitions
  */
 #if !defined(LOGGER_SHUNT_RESISTOR_MILLIOHM)
-#define LOGGER_SHUNT_RESISTOR_MILLIOHM          200L    // 0.2 ohm -> Resolution of 5 mA, but we display the average of 769 values per second
+#define LOGGER_SHUNT_RESISTOR_MILLIOHM          200    // 0.2 ohm -> Resolution of 5 mA, but we display the average of 769 values per second
 #endif
 #if !defined(ESR_SHUNT_RESISTOR_MILLIOHM)
-#define ESR_SHUNT_RESISTOR_MILLIOHM             2000L   // 2 ohm
+#define ESR_SHUNT_RESISTOR_MILLIOHM             2000   // 2 ohm
 #endif
 #define LOAD_LOW_MILLIOHM                       (1000 + ESR_SHUNT_RESISTOR_MILLIOHM) // Additional 1 ohm
 #define LOAD_HIGH_MILLIOHM                      (10 * 1000 + ESR_SHUNT_RESISTOR_MILLIOHM) // Additional 10 ohm
-#define ATTENUATION_FACTOR_VOLTAGE_RANGE_0      2L      // Divider with 100 kOhm and 100 kOhm -> 2.2 V range
-#define ATTENUATION_FACTOR_VOLTAGE_RANGE_1      4L      // Divider with 100 kOhm and 33.333 kOhm -> 4.4 V range
-#define ATTENUATION_FACTOR_VOLTAGE_RANGE_2      16L     // Divider with 100 kOhm and 6.666 kOhm -> 17.6 V range
-#define ATTENUATION_FACTOR_VOLTAGE_RANGE_3      59L     // Divider with 100 kOhm and 1.7 kOhm -> 64.9 V range - 59 to avoid 16 bit overflow for ...Millivolt
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_0      2      // Divider with 100 kOhm and 100 kOhm -> 2.2 V range
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_1      4      // Divider with 100 kOhm and 33.333 kOhm -> 4.4 V range
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_2      16     // Divider with 100 kOhm and 6.666 kOhm -> 17.6 V range
+#define ATTENUATION_FACTOR_VOLTAGE_RANGE_3      59     // Divider with 100 kOhm and 1.7 kOhm -> 64.9 V range - 59 to avoid 16 bit overflow for ...Millivolt
 
 /*
  * Imports and definitions for start/stop button at pin 2
@@ -199,14 +198,10 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
 /*********************
  * Measurement timing
  *********************/
-#define MILLIS_IN_ONE_SECOND 1000UL
-#define SECONDS_IN_ONE_MINUTE 60UL
-#define SECONDS_IN_ONE_MINUTE_SHORT 60
-#define MINUTES_IN_ONE_HOUR_SHORT 60
 //#define TEST // to speed up testing the code
 #if defined(TEST)
 #define NUMBER_OF_INITIAL_SAMPLES               4 // 4 seconds (-2 for initial display of append message) before starting discharge and storing, to have time to just test for ESR of battery.
-#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS   500L // The time of the activated load for one sample.
+#define SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS   500 // The time of the activated load for one sample.
 #define INITIAL_NUMBER_OF_SECONDS_PER_STORAGE   5 // 1 minute, if we have 1 sample per second
 #else
 #define NUMBER_OF_INITIAL_SAMPLES               30 // Before starting discharge and storing, to have time to just test for ESR of battery. 30 seconds with SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS as 1000.
@@ -215,7 +210,7 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
  * Using minutes instead of seconds and avoiding the divide by 60 at many places increases code size by 46 bytes :-(
  */
 #  if !defined(INITIAL_NUMBER_OF_SECONDS_PER_STORAGE)
-#define INITIAL_NUMBER_OF_SECONDS_PER_STORAGE   SECONDS_IN_ONE_MINUTE_SHORT // 60, if we have 1 sample per second (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS)
+#define INITIAL_NUMBER_OF_SECONDS_PER_STORAGE   SECONDS_IN_ONE_MINUTE // 60, if we have 1 sample per second (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS)
 #  endif
 #endif
 
@@ -224,10 +219,9 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
  * and 1 voltage value.
  * This is done 20 times per second and then averaged again.
  */
-#define LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT 769L // for ADC_PRESCALE32 and 20 ms (50 Hz)
+#define LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT 769 // for ADC_PRESCALE32 and 20 ms (50 Hz)
 #define LOGGER_SAMPLE_PERIOD_MILLIS             50 // 20 Hz.
 #define LOGGER_SAMPLE_FREQUENCY_HZ              (MILLIS_IN_ONE_SECOND / LOGGER_SAMPLE_PERIOD_MILLIS) // 20 Hz
-#define LOGGER_SAMPLES_PER_MINUTE               (SECONDS_IN_ONE_MINUTE * LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT)  // = 230.400 every minute for 10 HZ
 
 #define MAX_VALUES_DISPLAYED_IN_PLOTTER         500 // The Arduino 1.8 Plotter displays 500 values before scrolling
 #define BATTERY_OR_VOLTAGE_DETECTION_PERIOD_MILLIS         (MILLIS_IN_ONE_SECOND / 2) // 500 ms
@@ -235,8 +229,8 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
 /*******************
  * Attention timing
  *******************/
-#define STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS     (MILLIS_IN_ONE_SECOND * SECONDS_IN_ONE_MINUTE)
-#define STATE_STOP_ATTENTION_PERIOD_MILLIS                  (MILLIS_IN_ONE_SECOND * SECONDS_IN_ONE_MINUTE * 10)
+#define STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS     (MILLIS_IN_ONE_SECOND * SECONDS_IN_ONE_MINUTE) // 60000 fits in uint16_t
+#define STATE_STOP_ATTENTION_PERIOD_MILLIS                  ((uint32_t)MILLIS_IN_ONE_SECOND * SECONDS_IN_ONE_MINUTE * 10)
 
 /************************
  * Tester state machine
@@ -259,12 +253,12 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
 #define DO_NOT_NEED_SPEAK_EVENTS            // Disables SpeakingDone event handling. Saves up to 54 bytes program memory and 18 bytes RAM.
 #define ONLY_CONNECT_EVENT_REQUIRED         // Disables reorientation, redraw and SensorChange events
 #define SUPPRESS_SERIAL_PRINT               // To reduce code size
-#if !defined(ALLOW_SERIAL_PRINT_STOP_CONDITION)
+#  if !defined(ALLOW_SERIAL_PRINT_STOP_CONDITION)
 #define SUPPRESS_SERIAL_PRINT_STOP_CONDITION // To reduce code size
-#endif
-#if !defined(ALLOW_SERIAL_PRINT_FOUND_REMOVING_CONDITION)
+#  endif
+#  if !defined(ALLOW_SERIAL_PRINT_FOUND_REMOVING_CONDITION)
 //#define SUPPRESS_SERIAL_PRINT_FOUND_REMOVING_CONDITION // To reduce code size. - not required yet
-#endif
+#  endif
 
 #include "BlueDisplay.hpp" // part of https://github.com/ArminJo/Arduino-BlueDisplay
 //#define BLUETOOTH_BAUD_RATE BAUD_115200   // Activate this, if you have reprogrammed the HC05 module for 115200
@@ -281,9 +275,9 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
  * Border - YLabels - Chart with CO2_ARRAY_SIZE / 2 - Border - Buttons for 6 big characters - Border
  * Take border as CO2_ARRAY_SIZE / 20, button width as  4 * CO2_ARRAY_SIZE / 20 and base font size as CO2_ARRAY_SIZE / 40
  */
-#define DISPLAY_WIDTH   ((MAX_NUMBER_OF_SAMPLES * 33L) / 20L) // 556
-#define BASE_TEXT_SIZE  (MAX_NUMBER_OF_SAMPLES / 20L) // 16 - #define TEXT_SIZE_16_HEIGHT 18, #define TEXT_SIZE_16_WIDTH 10
-#define BASE_TEXT_WIDTH ((((MAX_NUMBER_OF_SAMPLES / 20L) * 6 ) + 4) / 10) // 10
+#define DISPLAY_WIDTH   ((MAX_NUMBER_OF_SAMPLES * 33L) / 20) // 556
+#define BASE_TEXT_SIZE  (MAX_NUMBER_OF_SAMPLES / 20) // 16 - #define TEXT_SIZE_16_HEIGHT 18, #define TEXT_SIZE_16_WIDTH 10
+#define BASE_TEXT_WIDTH ((((MAX_NUMBER_OF_SAMPLES / 20) * 6 ) + 4) / 10) // 10
 #define BUTTON_WIDTH    (BASE_TEXT_SIZE * 5) // 80
 #define CHART_START_X   (BASE_TEXT_SIZE * 3) // 48
 #define CHART_WIDTH     (MAX_NUMBER_OF_SAMPLES + 1) // 337, +1 for the first sample at minute 0 -> 337, 5 hours and 36 min
@@ -312,8 +306,7 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
 #define CHART_DATA_COLOR        COLOR16_RED
 #define CHART_TEXT_COLOR        COLOR16_BLACK
 
-#define CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED 30L
-#define SECONDS_PER_MINUTE                     60L
+#define CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED 30
 
 /*
  * Brightness handling
@@ -414,6 +407,29 @@ void printChartValues();
 void printCapacityValue();
 void readAndDrawEEPROMValues();
 #endif // SUPPORT_BLUEDISPLAY_CHART
+
+#if !defined(MILLIS_IN_ONE_SECOND)
+#define MILLIS_IN_ONE_SECOND    1000U
+
+#if !defined(SECONDS_IN_ONE_MINUTE)
+#define SECONDS_IN_ONE_MINUTE   60U
+#endif
+#if !defined(SECONDS_IN_ONE_HOUR)
+#define SECONDS_IN_ONE_HOUR     3600U
+#endif
+#if !defined(SECONDS_IN_ONE_DAY)
+#define SECONDS_IN_ONE_DAY      86400U
+#endif
+#if !defined(MINUTES_IN_ONE_HOUR)
+#define MINUTES_IN_ONE_HOUR     60U
+#endif
+#if !defined(MINUTES_IN_ONE_DAY)
+#define MINUTES_IN_ONE_DAY      1440U
+#endif
+#if !defined(HOURS_IN_ONE_DAY)
+#define HOURS_IN_ONE_DAY        24U
+#endif
+#endif
 
 //#define ENABLE_STACK_ANALYSIS
 #if defined(ENABLE_STACK_ANALYSIS)
@@ -521,7 +537,7 @@ struct BatteryOrLoggerInfoStruct {
     char CutoffLevelCharacter;
     uint16_t CutoffVoltageMillivolt;
 
-    uint8_t LoadSwitchSettleTimeMillis; // One of CUTOFF_LEVEL_HIGH, CUTOFF_LEVEL_LOW and CUTOFF_LEVEL_ZERO. Starts with the (inverted) value of the pin CUTOFF_LEVEL_PIN
+    uint8_t LoadSwitchSettleTimeMillis; // Time for the battery to reach its unloaded voltage
 } sBatteryOrLoggerInfo;
 
 struct lastDiplayedValuesStruct {
@@ -608,7 +624,7 @@ uint8_t sESRHistoryLength; // keep track of number of valid inputs used for appe
 
 // Override defaults defined in ADCUtils.h
 #define LI_ION_VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT 3500 // 3.5 volt
-#define VCC_CHECK_PERIOD_MILLIS                     (60000L) // check every minute
+#define VCC_CHECK_PERIOD_MILLIS                     60000 // check every minute
 #define VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP         5 // Shutdown after 5 times below VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT or below VCC_EMERGENCY_UNDERVOLTAGE_THRESHOLD_MILLIVOLT
 #if !defined(SUPPRESS_SERIAL_PRINT)
 #define LOCAL_INFO // For Serial output at isVCCUndervoltageMultipleTimes(). This is undefined after the include!
@@ -823,11 +839,11 @@ void setup() {
         Serial.print(F(" | "));
         Serial.print(
                 ((MAX_NUMBER_OF_SAMPLES) * (INITIAL_NUMBER_OF_SECONDS_PER_STORAGE / SECONDS_IN_ONE_MINUTE))
-                        / MINUTES_IN_ONE_HOUR_SHORT);
+                        / MINUTES_IN_ONE_HOUR);
         Serial.print(F("h "));
         Serial.print(
                 ((MAX_NUMBER_OF_SAMPLES) * (INITIAL_NUMBER_OF_SECONDS_PER_STORAGE / SECONDS_IN_ONE_MINUTE))
-                        % MINUTES_IN_ONE_HOUR_SHORT);
+                        % MINUTES_IN_ONE_HOUR);
         Serial.println(F("min"));
 #endif
     }
@@ -1009,13 +1025,14 @@ void loop() {
             getPeriodicAccumulatingLoggerValues();
         }
         auto tMillis = millis();
+        auto tTimeDifference = tMillis - sTesterInfo.LastMillisOfSample; // compute with full 32 bit -
         // For discharging, add LoadSwitchSettleTimeMillis to the second condition
         if ((sTesterInfo.inLoggerModeAndFlags && sLogger1SecondAccumulator.RawSampleCount == LOGGER_SAMPLE_FREQUENCY_HZ)
-                || (!sTesterInfo.inLoggerModeAndFlags
-                        && (unsigned) (tMillis - sTesterInfo.LastMillisOfSample)
-                                >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis))) {
+                || (!sTesterInfo.inLoggerModeAndFlags && (uint16_t) tTimeDifference // - and compare only 16 bit values, because it cannot exceed 1 second much
+                >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis))) {
             /*
-             * Here sample period of one second expired
+             * Here sample period of one second expired.
+             * The first period after switching to this states is undetermined, because LastMillisOfSample is undetermined
              * sTesterInfo.MeasurementState is STATE_INITIAL_SAMPLES or STATE_SAMPLE_AND_STORE_TO_EEPROM or STATE_STOPPED
              * Do all this every second (of battery load)
              */
@@ -1086,11 +1103,6 @@ void loop() {
  */
 void getOnlyPlotterOutputPinLevel() {
     sOnlyPlotterOutput = !digitalRead(ONLY_PLOTTER_OUTPUT_PIN);
-#if !defined(IN_WOKWI)
-    if (isVCCUSBPowered()) {
-        sOnlyPlotterOutput = !sOnlyPlotterOutput; // reversed behavior if powered by USB
-    }
-#endif
 }
 
 /*
@@ -1125,7 +1137,9 @@ void checkAndHandleVCCUndervoltage() {
  * Check for attention every minute.
  */
 void handlePeriodicDetectionOfProbe() {
-    if (millis() - sTesterInfo.LastMillisOfBatteryOrVoltageDetection >= BATTERY_OR_VOLTAGE_DETECTION_PERIOD_MILLIS) {
+    auto tTimeDifference = millis() - sTesterInfo.LastMillisOfBatteryOrVoltageDetection; // compute with full 32 bit -
+    if ((uint16_t) tTimeDifference >= BATTERY_OR_VOLTAGE_DETECTION_PERIOD_MILLIS) { // - and compare only 16 bit values
+        // initial delay introduced by truncating to 16 bit is not critical here :-)
         sTesterInfo.LastMillisOfBatteryOrVoltageDetection = millis();
 
         /*
@@ -1189,9 +1203,9 @@ void handlePeriodicDetectionOfProbe() {
                 }
 
                 /*
-                 * if not connected to USB, check for attention every minute
+                 * Check for attention every minute
                  */
-                if (!isVCCUSBPowered() && millis() - sTesterInfo.LastMillisOfStateWaitingForBatteryOrVoltageBeep >= STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS) {
+                if (millis() - sTesterInfo.LastMillisOfStateWaitingForBatteryOrVoltageBeep >= STATE_BATTERY_DETECTION_ATTENTION_PERIOD_MILLIS) {
                     sTesterInfo.LastMillisOfStateWaitingForBatteryOrVoltageBeep = millis();
                     playUndervoltageAttentionTone();
                 }
@@ -2100,7 +2114,7 @@ void getLogger1SecondValues() {
     /*
      * Compute Milliampere and avoid overflow
      */
-    sBatteryOrLoggerInfo.Milliampere = ((((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) / 1023L)
+    sBatteryOrLoggerInfo.Milliampere = ((((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) / 1023)
             * sLogger1SecondAccumulator.RawCurrentAccumulator)
             / (LOGGER_SHUNT_RESISTOR_MILLIOHM * LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT)); // / 3,076,000 for 200 mOhm
     if (sBatteryOrLoggerInfo.Milliampere >= NO_LOGGER_MILLAMPERE) {
@@ -2112,14 +2126,14 @@ void getLogger1SecondValues() {
      * AverageMillivolt is a union with NoLoadMillivolt and used for display
      */
     sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt = ((sLogger1SecondAccumulator.RawVoltageAccumulator >> 8)
-            / ((LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4) / ADC_INTERNAL_REFERENCE_MILLIVOLT));
+            / ((LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4L) / ADC_INTERNAL_REFERENCE_MILLIVOLT));
     if (sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt > NO_BATTERY_MILLIVOLT) {
         sTesterInfo.inLoggerModeAndFlags |= LOGGER_EXTERNAL_VOLTAGE_DETECTED; // set it, if once detected here
     }
     sBatteryOrLoggerInfo.Voltages.Logger.MaximumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT)
-            * (uint32_t) sLogger1SecondAccumulator.MaximumRawVoltage) / 1024L);
+            * (uint32_t) sLogger1SecondAccumulator.MaximumRawVoltage) / 1024);
     sBatteryOrLoggerInfo.Voltages.Logger.MinimumMillivolt = (((ADC_INTERNAL_REFERENCE_MILLIVOLT)
-            * (uint32_t) sLogger1SecondAccumulator.MinimumRawVoltage) / 1024L);
+            * (uint32_t) sLogger1SecondAccumulator.MinimumRawVoltage) / 1024);
 
 #if defined(LOCAL_TRACE)
     Serial.print(F("cnt="));
@@ -2148,7 +2162,7 @@ void getLogger1SecondValues() {
 
 void getLogger1MinuteValues() {
 // avoid overflow
-    sBatteryOrLoggerInfo.Milliampere = ((((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) / 1023L)
+    sBatteryOrLoggerInfo.Milliampere = ((((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) / 1023)
             * (sLogger1MinuteAccumulator.RawCurrentAccumulator / LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT))
             / ((uint32_t) sLogger1MinuteAccumulator.RawSampleCount * LOGGER_SHUNT_RESISTOR_MILLIOHM)); // / 240.000
 
@@ -2184,7 +2198,8 @@ Serial.println(F(" mV"));
  * complete reading takes 40.5 ms. For voltage > 4.4V it takes 48.5 ms
  */
 void getPeriodicAccumulatingLoggerValues() {
-    if ((unsigned) (millis() - sTesterInfo.LastMillisOfLoggerSample) >= LOGGER_SAMPLE_PERIOD_MILLIS) {
+    auto tTimeDifference = millis() - sTesterInfo.LastMillisOfSample; // compute with full 32 bit -
+    if ((unsigned int) tTimeDifference >= LOGGER_SAMPLE_PERIOD_MILLIS) { // - and compare only 16 bit values
         sTesterInfo.LastMillisOfLoggerSample = millis();
         digitalWrite(LED_BUILTIN, HIGH);
 
@@ -3617,9 +3632,9 @@ Serial.println(aIsLastElement);
             uint16_t tDurationMinutes = (ValuesForDeltaStorage.DeltaArrayIndex)
                     * (ChartStartValues.NumberOfSecondsPerStorage / SECONDS_IN_ONE_MINUTE);
             Serial.print('=');
-            Serial.print(tDurationMinutes / MINUTES_IN_ONE_HOUR_SHORT);
+            Serial.print(tDurationMinutes / MINUTES_IN_ONE_HOUR);
             Serial.print(F("h_"));
-            Serial.print(tDurationMinutes % MINUTES_IN_ONE_HOUR_SHORT);
+            Serial.print(tDurationMinutes % MINUTES_IN_ONE_HOUR);
             Serial.print(F("min Sample_time="));
             Serial.print(ChartStartValues.NumberOfSecondsPerStorage / SECONDS_IN_ONE_MINUTE);
             Serial.print(F("min Cutoff="));
@@ -4377,7 +4392,7 @@ void readAndDrawEEPROMValues() {
         if (tDeltaMillivoltPerGrid < tMillivoltPerGrid) {
             break; // < 100, 1000 etc.
         }
-        if (tDeltaMillivoltPerGrid < tMillivoltPerGrid * 2) {
+        if (tDeltaMillivoltPerGrid < (tMillivoltPerGrid * 2)) {
             tMillivoltPerGrid *= 2; // < 200, 2000 etc.
             break;
         }
@@ -4389,6 +4404,14 @@ void readAndDrawEEPROMValues() {
     }
 
     sVoltageChartCompressionFactor = tMillivoltPerGrid / 20;
+#if defined(LOCAL_TRACE)
+    Serial.print(F("Max="));
+    Serial.print(ValuesForChartScaling.maxVoltageNoLoadMillivolt);
+    Serial.print(F("V, min="));
+    Serial.print(ValuesForChartScaling.minVoltageNoLoadMillivolt);
+    Serial.print(F(", mV/grid="));
+    Serial.println(tMillivoltPerGrid);
+#endif
 
     /*
      * Compute Y offset, such, that voltage starts at top of chart
@@ -4505,7 +4528,7 @@ void printChartValues() {
 
 // Samples use 5u to have the same spacing as mAh
     snprintf(tStringBuffer, sizeof(tStringBuffer), "%5u Samples %u mn", ValuesForDeltaStorage.DeltaArrayIndex + 1,
-            ChartStartValues.NumberOfSecondsPerStorage / SECONDS_IN_ONE_MINUTE_SHORT); // Samples + start sample
+            ChartStartValues.NumberOfSecondsPerStorage / SECONDS_IN_ONE_MINUTE); // Samples + start sample
     tYPosition += 2 * tChartDataTextHeight;
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X, tYPosition, tStringBuffer, sChartDataTextSize, sTextColor, sBackgroundColor);
 
@@ -4513,8 +4536,8 @@ void printChartValues() {
     sVCCVoltageMillivolt = getVCCVoltageMillivolt();
     uint16_t tDurationMinutes = ValuesForDeltaStorage.DeltaArrayIndex
             * (ChartStartValues.NumberOfSecondsPerStorage / SECONDS_IN_ONE_MINUTE);
-    snprintf(tStringBuffer, sizeof(tStringBuffer), "%2u:%02u h       VCC", tDurationMinutes / MINUTES_IN_ONE_HOUR_SHORT,
-            tDurationMinutes % MINUTES_IN_ONE_HOUR_SHORT);
+    snprintf(tStringBuffer, sizeof(tStringBuffer), "%2u:%02u h       VCC", tDurationMinutes / MINUTES_IN_ONE_HOUR,
+            tDurationMinutes % MINUTES_IN_ONE_HOUR);
     dtostrf(sVCCVoltageMillivolt / 1000.0, 5, 2, &tStringBuffer[8]);
     tStringBuffer[13] = ' '; // overwrite terminating null
     tYPosition += tChartDataTextHeight;
@@ -4566,6 +4589,7 @@ void printChartValues() {
  * Version 7.0 - 10/2025
  *  - Changed analog pin assignments for two additional voltage ranges using internal reference.
  *  - Fixed some bugs in logger mode.
+ *  - Detection if powered by USB removed to save space.
  *
  * Version 6.0 - 9/2025
  *  - Improved logger handling.

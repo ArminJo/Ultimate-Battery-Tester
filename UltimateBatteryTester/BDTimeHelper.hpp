@@ -33,7 +33,7 @@
 #define _BD_TIME_HELPER_HPP
 
 #if !defined(MILLIS_IN_ONE_SECOND)
-#define MILLIS_IN_ONE_SECOND    1000U
+#define MILLIS_IN_ONE_SECOND    1000U // Use U otherwise we see "warning: comparison between signed and unsigned integer expressions [-Wsign-compare]"
 #endif
 #if !defined(SECONDS_IN_ONE_MINUTE)
 #define SECONDS_IN_ONE_MINUTE   60U
@@ -42,7 +42,7 @@
 #define SECONDS_IN_ONE_HOUR     3600U
 #endif
 #if !defined(SECONDS_IN_ONE_DAY)
-#define SECONDS_IN_ONE_DAY      86400UL
+#define SECONDS_IN_ONE_DAY      86400U
 #endif
 #if !defined(MINUTES_IN_ONE_HOUR)
 #define MINUTES_IN_ONE_HOUR     60U

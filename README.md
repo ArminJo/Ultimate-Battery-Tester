@@ -142,7 +142,8 @@ The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module**
 | ![INR18650MH1](pictures/INR18650MH1.png) | ![755590_4459mAh](pictures/755590_4459mAh.png) |
 | A LG INR18650MH1 cell salvaged from a scooter battery. |  A new 755590 pouch cell with 4459mAh and an ESR of 0.14 &ohm;, maybe because of the protection circuit. |
 | | |
-
+| ![VapePouch](pictures/VapePouch_550.png) |  |
+| A 550 mAh pouch cell salvaged from a vape. |   |
 <br/>
 
 # Sample plots
