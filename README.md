@@ -305,6 +305,10 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
+### Version 7.1.0
+- Fixed overflow bug relevant after 336 storage periods.
+- Use period instead of sample for display.
+
 ### Version 7.0.0
 - Changed analog pin assignments for two additional voltage ranges using internal reference.
 - Fixed some bugs in logger mode.
