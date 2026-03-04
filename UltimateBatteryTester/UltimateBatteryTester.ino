@@ -63,7 +63,7 @@
 
 #include "pitches.h"
 
-#define VERSION_EXAMPLE "7.1"
+#define VERSION_EXAMPLE "7.2"
 // The change log is at the bottom of the file
 
 //#define TRACE
@@ -365,10 +365,10 @@ const char MeasurementStateButtonStringWaiting[] PROGMEM = "Waiting";
 const char MeasurementStateButtonStringTesting[] PROGMEM = "Testing";
 const char MeasurementStateButtonStringRunning[] PROGMEM = "Running";
 const char MeasurementStateButtonStringStopped[] PROGMEM = "Stopped"; // stopped manually
-const char MeasurementStateButtonStringFinished[] PROGMEM = "Finished";// stopped by detecting end condition
-const char *const sMeasurementStateButtonTextStringArray[] PROGMEM = {MeasurementStateButtonStringBooting,
-    MeasurementStateButtonStringWaiting, MeasurementStateButtonStringTesting, MeasurementStateButtonStringRunning,
-    MeasurementStateButtonStringStopped, MeasurementStateButtonStringFinished};
+const char MeasurementStateButtonStringFinished[] PROGMEM = "Finished"; // stopped by detecting end condition
+const char *const sMeasurementStateButtonTextStringArray[] PROGMEM = { MeasurementStateButtonStringBooting,
+        MeasurementStateButtonStringWaiting, MeasurementStateButtonStringTesting, MeasurementStateButtonStringRunning,
+        MeasurementStateButtonStringStopped, MeasurementStateButtonStringFinished };
 BDButton TouchButtonMeasurementState;
 BDButton TouchButtonAppend;
 
@@ -378,7 +378,7 @@ void setMeasurementStateAndBDButtonText(uint8_t aMeasurementState); // calls set
 const char CutoffButtonStringHigh[] PROGMEM = "Cutoff High";
 const char CutoffButtonStringLow[] PROGMEM = "Cutoff Low";
 const char CutoffButtonStringZero[] PROGMEM = "Cutoff Zero";
-const char *const sCutoffButtonTextStringArray[] PROGMEM = {CutoffButtonStringHigh, CutoffButtonStringLow, CutoffButtonStringZero};
+const char *const sCutoffButtonTextStringArray[] PROGMEM = { CutoffButtonStringHigh, CutoffButtonStringLow, CutoffButtonStringZero };
 BDButton TouchButtonCutoffHighLowZero;
 void setCutoffHighLowZeroButtonTextAndDrawButton();
 
@@ -439,17 +439,6 @@ void readAndDrawEEPROMValues();
 /*********************************************
  * Battery types and their measurement values
  *********************************************/
-struct BatteryTypeInfoStruct {
-    const char TypeName[11];
-    uint16_t DetectionThresholdVoltageMillivolt; // Type is detected if voltage is below this threshold
-    uint16_t NominalFullVoltageMillivolt;        // The voltage to start the "standard" capacity computation
-    uint16_t CutoffVoltageMillivoltHigh; // The voltage to stop the "standard" capacity computation. Cut off happens below this voltage
-    uint16_t CutoffVoltageMillivoltLow;  // Switch off voltage for extended capacity measurement
-    uint16_t CutoffVoltageMillivoltZero; // Switch off voltage for destructive capacity measurement
-    uint8_t LoadType;                    // High (3 Ohm) or low (12 Ohm)
-    uint16_t LoadSwitchSettleTimeMillis; // Time for voltage to settle after load switch was disabled => time of NoLoad during one sample
-};
-
 #define NO_BATTERY_MILLIVOLT                         70 // 50 mV
 #define NO_LOGGER_MILLAMPERE                         12
 
@@ -475,8 +464,19 @@ struct BatteryTypeInfoStruct {
 #define TYPE_INDEX_MAX          10
 #define TYPE_INDEX_LOGGER       42
 
+struct BatteryTypeInfoStruct {
+    char TypeName[11];
+    uint16_t DetectionThresholdVoltageMillivolt; // Type is detected if voltage is below this threshold
+    uint16_t NominalFullVoltageMillivolt;        // The voltage to start the "standard" capacity computation
+    uint16_t CutoffVoltageMillivoltHigh; // The voltage to stop the "standard" capacity computation. Cut off happens below this voltage
+    uint16_t CutoffVoltageMillivoltLow;  // Switch off voltage for extended capacity measurement
+    uint16_t CutoffVoltageMillivoltZero; // Switch off voltage for destructive capacity measurement
+    uint8_t LoadType;                    // High (3 Ohm) or low (12 Ohm)
+    uint16_t LoadSwitchSettleTimeMillis; // Time for voltage to settle after load switch was disabled => time of NoLoad during one sample
+};
+
 // @formatter:off
-struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = {
+struct BatteryTypeInfoStruct const BatteryTypeInfoArray[] PROGMEM = {
     { "No battery", NO_BATTERY_MILLIVOLT, 0, 0, 0, 0, NO_LOAD, 0 }, /* Below 100 mV and not below 50, to avoid toggling between no and low batt */
     { "Low batt. ", 1000, 800, 300, 100, 70, HIGH_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /* For researching of worn out batteries. */
     { "NiCd NiMH ", 1460, NIMH_STANDARD_FULL_VOLTAGE_MILLIVOLT, NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT,
@@ -484,9 +484,10 @@ struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = {
     { "Alkali    ", 1550, 1500, 1300, 1000, 70, HIGH_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /*500 mA*/
     { "NiZn batt.", 1850, 1650, 1400, 1300, 100, HIGH_LOAD, OTHER_SWITCH_OFF_SETTLING_MILLIS }, /*550 mA*/
     { "LiFePO4   ", 3400, 3400, 3050, 2700, 180, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*270 mA https://www.jackery.com/blogs/knowledge/ultimate-guide-to-lifepo4-voltage-chart*/
-    { "Li-ion    ", 5000, LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT /*4100*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3400*/,
+    { "Li-ion    ", 4900, LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT /*4100*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3400*/,
             LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*180mV*/,
             LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*300 mA*/
+    { "Power bank", 5200, 0, 4800, 4500, 4300, LOW_LOAD, 20 }, /*420 mA*/
     { "LiIo 2pack", 2 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT/*8.6V*/, 2 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
             2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
             2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*360mV*/, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*620 mA*/
@@ -508,6 +509,9 @@ struct BatteryTypeInfoStruct BatteryTypeInfoArray[] = {
             7 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }
 };
 // @formatter:on
+struct BatteryTypeInfoStruct sCurrentBatteryTypeInfo; // Info data in RAM for current sBatteryOrLoggerInfo.BatteryTypeIndex.
+void fillBatteryTypeInfoFromProgmem(); // The function to fill sCurrentBatteryTypeInfo with entry from BatteryTypeInfoArray
+void printBatteryTypeInfo();
 
 /*******************************************
  * Battery values set by getBatteryValues()
@@ -645,8 +649,8 @@ struct EEPROMStartValuesStruct {
     uint8_t CutoffLevel; // One of CUTOFF_LEVEL_HIGH, CUTOFF_LEVEL_LOW and CUTOFF_LEVEL_ZERO.
     uint8_t BatteryTypeIndex;
     uint8_t inLoggerModeAndFlags; // 0 or 1 - is sTesterInfo.inLoggerModeAndFlags & LOGGER_MODE_MASK
-    uint8_t NumberOfSecondsPerStorage; // INITIAL_NUMBER_OF_SECONDS_PER_STORAGE (60) and multiple like 120, 240, etc.
-} ChartStartValues;
+    uint16_t NumberOfSecondsPerStorage; // INITIAL_NUMBER_OF_SECONDS_PER_STORAGE (60) and multiple like 120, 240, 480, etc.
+} ChartStartValues; // 15 bytes
 EEMEM EEPROMStartValuesStruct EEPROMStartValues;
 #define EEPROM_EMPTY_VALUE      0xFF // the value of an unwritten / empty EEPROM byte
 
@@ -905,28 +909,28 @@ void setup() {
 #  if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (!BlueDisplay1.isConnectionEstablished()) {
 #  endif
-    /*
-     * Do not print if connected to BlueDisplay screen, which shows chart and indirect also the mode by ("no U or I" or "no battery")
-     */
-    myLCD.setCursor(0, 1);
-    if (sOnlyPlotterOutput) {
-        myLCD.print(F("Only plotter out"));
-    } else {
-        myLCD.print(F("No plotter out  "));
-    }
-    delay(LCD_MESSAGE_PERSIST_TIME_MILLIS / 2);
+        /*
+         * Do not print if connected to BlueDisplay screen, which shows chart and indirect also the mode by ("no U or I" or "no battery")
+         */
+        myLCD.setCursor(0, 1);
+        if (sOnlyPlotterOutput) {
+            myLCD.print(F("Only plotter out"));
+        } else {
+            myLCD.print(F("No plotter out  "));
+        }
+        delay(LCD_MESSAGE_PERSIST_TIME_MILLIS / 2);
 
-    myLCD.setCursor(0, 1);
-    if (sTesterInfo.inLoggerModeAndFlags) {
+        myLCD.setCursor(0, 1);
+        if (sTesterInfo.inLoggerModeAndFlags) {
 #  if !defined(SUPPRESS_SERIAL_PRINT)
         if (!sOnlyPlotterOutput) {
             Serial.println(F("Only logger mode"));
         }
 #  endif
-        myLCD.print(F("Only logger mode"));
-        _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
-    }
-    LCDClearLine(&myLCD, 1); // Clear line "No plotter out  " or "Only logger mode"
+            myLCD.print(F("Only logger mode"));
+            _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
+        }
+        LCDClearLine(&myLCD, 1); // Clear line "No plotter out  " or "Only logger mode"
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     }
 #endif
@@ -975,6 +979,7 @@ void setup() {
     if (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt < NO_BATTERY_MILLIVOLT) {
         // Battery / Logger is removed here, so start with cutoff value determined by pin
         sBatteryOrLoggerInfo.BatteryTypeIndex = TYPE_INDEX_NO_BATTERY; // Required for correct CutoffVoltage
+        fillBatteryTypeInfoFromProgmem();
         setCutoffAndCutoffVoltageFromPinLevel(sLastValueOfCutoffLevelPin);
     }
     printCutoffLevelLCD_BD(); // print actual cut off level
@@ -1128,6 +1133,7 @@ void checkAndHandleVCCUndervoltage() {
      */
     checkAndWaitForReferenceAndChannelToSwitch(ADC_CHANNEL_CURRENT, INTERNAL);
 }
+
 /*
  * Check if battery was inserted or voltage connected.
  * If yes, show values and type detected, update cutoff values and switch to state STATE_INITIAL_SAMPLES.
@@ -1182,7 +1188,7 @@ void handlePeriodicDetectionOfProbe() {
                     clearLogger1MinuteAccumulator();
                 } else {
                     // set load for the first call of getBatteryValues() to measure the current
-                    setLoad(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].LoadType);
+                    setLoad(sCurrentBatteryTypeInfo.LoadType);
                 }
 
             } else {
@@ -1229,13 +1235,13 @@ void handlePeriodicDetectionOfProbe() {
 void handleEndOfStateInitialSamples() {
     if (!sTesterInfo.inLoggerModeAndFlags
             && sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt
-                    < BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].NominalFullVoltageMillivolt) {
+                    < sCurrentBatteryTypeInfo.NominalFullVoltageMillivolt) {
 #if !defined(SUPPRESS_SERIAL_PRINT)
         if (!sOnlyPlotterOutput) {
             Serial.print(F("Start voltage "));
             Serial.print(sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt);
             Serial.print(F(" V is below NominalFullVoltageMillivolt of "));
-            Serial.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].NominalFullVoltageMillivolt);
+            Serial.print(sCurrentBatteryTypeInfo.NominalFullVoltageMillivolt);
             Serial.println(F(" V => standard capacity can not be computed!"));
         }
 #endif
@@ -1352,6 +1358,35 @@ void handlePeriodicStoringToEEPROM() {
 }
 
 /*
+ * For development
+ */
+void printBatteryTypeInfo(){
+    Serial.println(F("CurrentBatteryTypeInfo:"));
+    Serial.print(sCurrentBatteryTypeInfo.TypeName);
+    Serial.print('|');
+    Serial.print(sCurrentBatteryTypeInfo.DetectionThresholdVoltageMillivolt);
+    Serial.print('|');
+    Serial.print(sCurrentBatteryTypeInfo.NominalFullVoltageMillivolt);
+    Serial.print('|');
+    Serial.print(sCurrentBatteryTypeInfo.CutoffVoltageMillivoltHigh);
+    Serial.print('|');
+    Serial.print(sCurrentBatteryTypeInfo.CutoffVoltageMillivoltLow);
+    Serial.print('|');
+    Serial.print(sCurrentBatteryTypeInfo.CutoffVoltageMillivoltZero);
+    Serial.print('|');
+    Serial.print(sCurrentBatteryTypeInfo.LoadType);
+    Serial.print('|');
+    Serial.print(sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis);
+    Serial.println();
+}
+/*
+ * Fill sCurrentBatteryTypeInfo with entry from BatteryTypeInfoArray
+ */
+void fillBatteryTypeInfoFromProgmem() {
+    memcpy_P(&sCurrentBatteryTypeInfo, &BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex], sizeof(BatteryTypeInfoStruct));
+}
+
+/*
  * Not used yet
  */
 void printStateString(uint8_t aState) {
@@ -1426,7 +1461,7 @@ void switchToStateWaitingForBatteryOrVoltage() {
     setMeasurementStateAndBDButtonText(STATE_WAITING_FOR_BATTERY_OR_EXTERNAL);
     printSwitchStateString();
     printlnIfNotPlotterOutput();
-    sBatteryOrLoggerInfo.BatteryTypeIndex = TYPE_INDEX_MAX + 2; // to force display of "found ...", but do not set button text
+    sBatteryOrLoggerInfo.BatteryTypeIndex = TYPE_INDEX_MAX + 2; // To force display of "found ..." in setBatteryTypeIndexFromVoltage(), but do not set button text
     sTesterInfo.LastMillisOfStateWaitingForBatteryOrVoltageBeep = millis();
 
     sTesterInfo.inLoggerModeAndFlags &= ~(LOGGER_EXTERNAL_CURRENT_DETECTED | LOGGER_EXTERNAL_VOLTAGE_DETECTED); // reset detected flags
@@ -1593,13 +1628,13 @@ void setCutoffAndCutoffVoltage(uint8_t aCutoffLevel) {
     char tCutoffLevelCharacter;
     if (aCutoffLevel == CUTOFF_LEVEL_LOW) {
         tCutoffLevelCharacter = 'l';
-        tCutoffVoltageMillivolt = BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].CutoffVoltageMillivoltLow;
+        tCutoffVoltageMillivolt = sCurrentBatteryTypeInfo.CutoffVoltageMillivoltLow;
     } else if (aCutoffLevel == CUTOFF_LEVEL_ZERO) {
         tCutoffLevelCharacter = 'z';
-        tCutoffVoltageMillivolt = BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].CutoffVoltageMillivoltZero;
+        tCutoffVoltageMillivolt = sCurrentBatteryTypeInfo.CutoffVoltageMillivoltZero;
     } else {
         tCutoffLevelCharacter = 'h';
-        tCutoffVoltageMillivolt = BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].CutoffVoltageMillivoltHigh;
+        tCutoffVoltageMillivolt = sCurrentBatteryTypeInfo.CutoffVoltageMillivoltHigh;
     }
     /*
      * Update structure
@@ -1669,10 +1704,10 @@ void printCutoffLevelLCD_BD() {
                 } else {
                     if (tCutoffLevel == CUTOFF_LEVEL_LOW) {
                         Serial.print(F("Cut off at low voltage "));
-                        Serial.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].CutoffVoltageMillivoltLow);
+                        Serial.print(sCurrentBatteryTypeInfo.CutoffVoltageMillivoltLow);
                     } else { // CUTOFF_LEVEL_HIGH
                         Serial.print(F("Cut off at high voltage "));
-                        Serial.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].CutoffVoltageMillivoltHigh);
+                        Serial.print(sCurrentBatteryTypeInfo.CutoffVoltageMillivoltHigh);
                     }
                     Serial.println(F(" mV"));
                 }
@@ -2373,7 +2408,7 @@ void getBatteryValues() {
     delay(sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis);
     getVoltageMillivolt(); // get current battery NoLoadMillivolt
 // restore original load state
-    setLoad(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].LoadType);
+    setLoad(sCurrentBatteryTypeInfo.LoadType);
     digitalWrite(LED_BUILTIN, LOW);
 
     if (sBatteryOrLoggerInfo.Milliampere > 1) {
@@ -2581,7 +2616,8 @@ void checkAndHandleStopConditionLCD() {
 
 void setBatteryTypeIndex(uint8_t aBatteryTypeIndex) {
     sBatteryOrLoggerInfo.BatteryTypeIndex = aBatteryTypeIndex;
-    sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis = BatteryTypeInfoArray[aBatteryTypeIndex].LoadSwitchSettleTimeMillis;
+    fillBatteryTypeInfoFromProgmem();
+    sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis = sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis;
     setCutoffAndCutoffVoltage(sBatteryOrLoggerInfo.CutoffLevel); // set CutoffVoltageMillivolt, which depends on BatteryTypeIndex
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     setCutoffHighLowZeroButtonTextAndDrawButton();
@@ -2604,7 +2640,8 @@ bool setBatteryTypeIndexFromVoltage(uint16_t aBatteryVoltageMillivolt) {
 // scan all threshold voltage of all battery types
     uint_fast8_t tBatteryTypeIndex = 0;
     for (; tBatteryTypeIndex < sizeof(BatteryTypeInfoArray) / sizeof(BatteryTypeInfoStruct) - 1; tBatteryTypeIndex++) {
-        if (aBatteryVoltageMillivolt < BatteryTypeInfoArray[tBatteryTypeIndex].DetectionThresholdVoltageMillivolt) {
+        uint16_t tDetectionThresholdVoltageMillivolt = pgm_read_word(&BatteryTypeInfoArray[tBatteryTypeIndex].DetectionThresholdVoltageMillivolt);
+        if (aBatteryVoltageMillivolt < tDetectionThresholdVoltageMillivolt) {
             break; // If not found -> assume high voltage is detected
         }
     }
@@ -2684,13 +2721,13 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
 #if !defined(SUPPRESS_SERIAL_PRINT)
                 if (!sOnlyPlotterOutput) {
                     // The same info is printed below by writeString(F("\rFound ")); ...
-                    Serial.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].TypeName);
+                    Serial.print(sCurrentBatteryTypeInfo.TypeName);
                     Serial.println(F(" found"));
                 }
 #endif
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
                 BlueDisplay1.writeString(F("\rFound "));
-                BlueDisplay1.writeString(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].TypeName);
+                BlueDisplay1.writeString(sCurrentBatteryTypeInfo.TypeName);
 #endif
 #if defined(USE_LCD)
                 // The current battery voltage is displayed, so clear "No batt." message selectively
@@ -2699,7 +2736,7 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
 
                 myLCD.setCursor(0, 1);
                 myLCD.print(F("Found "));
-                myLCD.print(BatteryTypeInfoArray[sBatteryOrLoggerInfo.BatteryTypeIndex].TypeName);
+                myLCD.print(sCurrentBatteryTypeInfo.TypeName);
                 _delay(LCD_MESSAGE_PERSIST_TIME_MILLIS);
                 LCDClearLine(&myLCD, 1);
 #endif
@@ -3376,7 +3413,7 @@ void storeBatteryValuesToEEPROM(uint16_t aVoltageNoLoadMillivolt, uint16_t aMill
              * Set value for new compression
              */
             ChartStartValues.NumberOfSecondsPerStorage *= 2;
-            eeprom_update_byte(&EEPROMStartValues.NumberOfSecondsPerStorage, ChartStartValues.NumberOfSecondsPerStorage); // store value in EEPROM
+            eeprom_update_word(&EEPROMStartValues.NumberOfSecondsPerStorage, ChartStartValues.NumberOfSecondsPerStorage); // store value in EEPROM
             if (!sOnlyPlotterOutput) {
                 Serial.println(F("Compression done"));
             }
@@ -3725,7 +3762,7 @@ Serial.print(sChartReadValueArrayType);
      */
     sTesterInfo.isStandardCapacityAvailable = false;
     uint8_t tCapacityMilliampereHourStandardValueState;
-    auto tNominalFullVoltageMillivolt = BatteryTypeInfoArray[ChartStartValues.BatteryTypeIndex].NominalFullVoltageMillivolt;
+    auto tNominalFullVoltageMillivolt = sCurrentBatteryTypeInfo.NominalFullVoltageMillivolt;
     if (tVoltageMillivolt >= tNominalFullVoltageMillivolt) {
         tCapacityMilliampereHourStandardValueState = CAPACITY_WAITING_FOR_NOMINAL_FULL_VOLTAGE;
     } else {
@@ -3841,7 +3878,7 @@ Serial.print(sChartReadValueArrayType);
 #endif
 
             } else if (tCapacityMilliampereHourStandardValueState == CAPACITY_STARTED
-                    && tVoltageMillivolt < BatteryTypeInfoArray[ChartStartValues.BatteryTypeIndex].CutoffVoltageMillivoltHigh) {
+                    && tVoltageMillivolt < sCurrentBatteryTypeInfo.CutoffVoltageMillivoltHigh) {
                 tCapacityMilliampereHourStandardValueState = CAPACITY_COMPLETED;
                 /*
                  * We reached CutoffVoltageMillivoltHigh, now we can compute standard capacity, if we started above nominal full voltage
@@ -4505,7 +4542,7 @@ void printChartValues() {
     if (ChartStartValues.inLoggerModeAndFlags) {
         aBatteryTypePtr = "Logger";
     } else {
-        aBatteryTypePtr = BatteryTypeInfoArray[ChartStartValues.BatteryTypeIndex].TypeName;
+        aBatteryTypePtr = sCurrentBatteryTypeInfo.TypeName;
     }
     BlueDisplay1.drawText(CHART_VALUES_POSITION_X + (BASE_TEXT_WIDTH * 6) - 3, tYPosition, aBatteryTypePtr, sChartDataTextSize,
             sTextColor, sBackgroundColor);
@@ -4603,6 +4640,9 @@ int8_t getDelta(uint8_t a4BitDelta) {
  * Ideas for Version 8.0
  * - no arduino serial, only BD status line
  * - constants like shunt resistor as variables (float?), to be set by user
+ *
+ * Version 7.2 - 03/2026
+ * - BatteryTypeInfoArray now in FLASH memory.
  *
  * Version 7.1 - 02/2026
  * - Fixed overflow bug relevant after 336 storage periods.

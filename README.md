@@ -305,7 +305,11 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 ![CutoffLow](pictures/CutoffLow.png)
 
 # Revision History
+### Version 7.2.0
+- BatteryTypeInfoArray now in FLASH memory.
+
 ### Version 7.1.0
+- Fixed bugs in ESR and load resistor computations.
 - Fixed overflow bug relevant after 336 storage periods.
 - Use period instead of sample for display.
 
