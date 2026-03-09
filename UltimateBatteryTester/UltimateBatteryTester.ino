@@ -487,7 +487,7 @@ struct BatteryTypeInfoStruct const BatteryTypeInfoArray[] PROGMEM = {
     { "Li-ion    ", 4900, LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT /*4100*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT/*3400*/,
             LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW/*3V*/, LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*180mV*/,
             LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*300 mA*/
-    { "Power bank", 5200, 0, 4800, 4500, 4300, LOW_LOAD, 20 }, /*420 mA*/
+    { "Power bank", 5300, 0, 4800, 4500, 4300, LOW_LOAD, 0 /*No temporarily disconnection of load*/ }, /*420 mA*/
     { "LiIo 2pack", 2 * LI_ION_MAX_FULL_VOLTAGE_MILLIVOLT/*8.6V*/, 2 * LI_ION_STANDARD_FULL_VOLTAGE_MILLIVOLT,
             2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT /*7V*/, 2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW /*6V*/,
             2 * LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO /*360mV*/, LOW_LOAD, LI_ION_SWITCH_OFF_SETTLING_MILLIS }, /*620 mA*/
@@ -519,7 +519,7 @@ void printBatteryTypeInfo();
 struct BatteryOrLoggerInfoStruct {
     union VoltagesUnion {
         struct BatteryVoltagesStruct {
-            uint16_t NoLoadMillivolt; // initially and periodically stored to EEPROM
+            uint16_t NoLoadMillivolt; // initially and periodically stored to EEPROM. Holds LoadMillivolt for Power bank.
             uint16_t LoadMillivolt;
         } Battery;
         struct LoggerVoltagesStruct {
@@ -540,8 +540,6 @@ struct BatteryOrLoggerInfoStruct {
     uint8_t CutoffLevel; // One of CUTOFF_LEVEL_HIGH, CUTOFF_LEVEL_LOW and CUTOFF_LEVEL_ZERO. Starts with the (inverted) value of the pin CUTOFF_LEVEL_PIN
     char CutoffLevelCharacter;
     uint16_t CutoffVoltageMillivolt;
-
-    uint8_t LoadSwitchSettleTimeMillis; // Time for the battery to reach its unloaded voltage
 } sBatteryOrLoggerInfo;
 
 struct lastDiplayedValuesStruct {
@@ -1035,7 +1033,7 @@ void loop() {
         // For discharging, add LoadSwitchSettleTimeMillis to the second condition
         if ((sTesterInfo.inLoggerModeAndFlags && sLogger1SecondAccumulator.RawSampleCount == LOGGER_SAMPLE_FREQUENCY_HZ)
                 || (!sTesterInfo.inLoggerModeAndFlags && (uint16_t) tTimeDifference // - and compare only 16 bit values, because it cannot exceed 1 second much
-                >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis))) {
+                >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis))) {
             /*
              * Here sample period of one second expired.
              * The first period after switching to this states is undetermined, because LastMillisOfSample is undetermined
@@ -1234,8 +1232,7 @@ void handlePeriodicDetectionOfProbe() {
  */
 void handleEndOfStateInitialSamples() {
     if (!sTesterInfo.inLoggerModeAndFlags
-            && sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt
-                    < sCurrentBatteryTypeInfo.NominalFullVoltageMillivolt) {
+            && sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt < sCurrentBatteryTypeInfo.NominalFullVoltageMillivolt) {
 #if !defined(SUPPRESS_SERIAL_PRINT)
         if (!sOnlyPlotterOutput) {
             Serial.print(F("Start voltage "));
@@ -1360,7 +1357,7 @@ void handlePeriodicStoringToEEPROM() {
 /*
  * For development
  */
-void printBatteryTypeInfo(){
+void printBatteryTypeInfo() {
     Serial.println(F("CurrentBatteryTypeInfo:"));
     Serial.print(sCurrentBatteryTypeInfo.TypeName);
     Serial.print('|');
@@ -2401,15 +2398,20 @@ void getBatteryValues() {
 
     if (sTesterInfo.MeasurementState == STATE_STOPPED) return; // thats all if stopped :-)
 
-// Deactivate load and wait for voltage to settle
-// During the no load period switch on the LED
-    setLoad(NO_LOAD);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis);
-    getVoltageMillivolt(); // get current battery NoLoadMillivolt
-// restore original load state
-    setLoad(sCurrentBatteryTypeInfo.LoadType);
-    digitalWrite(LED_BUILTIN, LOW);
+    if (sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis != 0) {
+        // Deactivate load and wait for voltage to settle
+        // During the no load period switch on the LED
+        digitalWrite(LED_BUILTIN, HIGH);
+        setLoad(NO_LOAD);
+        delay(sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis);
+        getVoltageMillivolt(); // get current battery NoLoadMillivolt
+        setLoad(sCurrentBatteryTypeInfo.LoadType);
+        // restore original load state
+        digitalWrite(LED_BUILTIN, LOW);
+    } else {
+        // No deactivating of load required e.g. for PowerBanks -> fill NoLoadMillivolt with load value.
+        sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt;
+    }
 
     if (sBatteryOrLoggerInfo.Milliampere > 1) {
         if (sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt > sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt) {
@@ -2617,7 +2619,6 @@ void checkAndHandleStopConditionLCD() {
 void setBatteryTypeIndex(uint8_t aBatteryTypeIndex) {
     sBatteryOrLoggerInfo.BatteryTypeIndex = aBatteryTypeIndex;
     fillBatteryTypeInfoFromProgmem();
-    sBatteryOrLoggerInfo.LoadSwitchSettleTimeMillis = sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis;
     setCutoffAndCutoffVoltage(sBatteryOrLoggerInfo.CutoffLevel); // set CutoffVoltageMillivolt, which depends on BatteryTypeIndex
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     setCutoffHighLowZeroButtonTextAndDrawButton();
@@ -2640,7 +2641,8 @@ bool setBatteryTypeIndexFromVoltage(uint16_t aBatteryVoltageMillivolt) {
 // scan all threshold voltage of all battery types
     uint_fast8_t tBatteryTypeIndex = 0;
     for (; tBatteryTypeIndex < sizeof(BatteryTypeInfoArray) / sizeof(BatteryTypeInfoStruct) - 1; tBatteryTypeIndex++) {
-        uint16_t tDetectionThresholdVoltageMillivolt = pgm_read_word(&BatteryTypeInfoArray[tBatteryTypeIndex].DetectionThresholdVoltageMillivolt);
+        uint16_t tDetectionThresholdVoltageMillivolt = pgm_read_word(
+                &BatteryTypeInfoArray[tBatteryTypeIndex].DetectionThresholdVoltageMillivolt);
         if (aBatteryVoltageMillivolt < tDetectionThresholdVoltageMillivolt) {
             break; // If not found -> assume high voltage is detected
         }
@@ -3557,9 +3559,9 @@ Serial.println(aIsLastElement);
                 sLastChartData.Millivolt = aMillivoltToPrint;
                 /*
                  * Compute new x scale depending on the current data length
-                 * We get the following values for compression 1, 2 and 4
-                 * factors:  6   4   3   2  1.5   1      1.5    1  1.5    1
-                 * Labels:  10  15  20  30  40 1:00     1:20 2:00 2:40 4:00
+                 * We get the following first label values for different compressions
+                 * factors:  6   4   3   2  1.5     1
+                 * Labels:  10  15  20  30   40  1:00
                  */
                 int16_t tXScaleFactor = VoltageChart.computeXLabelAndXDataScaleFactor(aChartValueArrayIndex);
 #    if defined(LOCAL_TRACE)
@@ -3576,12 +3578,17 @@ Serial.println(aIsLastElement);
 #    endif
                 float tChartMinutesPerLabelUncompressed = CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED; // 30
                 uint8_t tXGridOrLabelPixelSpacing = CHART_MINUTES_PER_X_LABEL_UNCOMPRESSED;
-                if (tXScaleFactor >= 5) {
-                    // Here we have 12 minutes label or less -> use scale factor 6 which is 10 minutes label
+                if (tXScaleFactor > 6) {
+                    // Clip scale factor to 6
                     tXScaleFactor = 6;
+                }
+                if (tXScaleFactor == 5) {
+                    // Here we have 12 minutes label or less -> use scale factor 4 which is 15 minutes label
+                    tXScaleFactor = 4;
                 }
                 if (tXScaleFactor == 1) {
                     /*
+                     * Factor 1.5
                      * Here we have labels 40, 1:20, 2:40 which is 2 * (2/3 of 30, 1:00, 2:00). 2 is the label distance.
                      * Change to labels 45, 1:30, 3:00 by setting XLabelBaseIncrementValue from 30 to 33.75
                      */
@@ -4537,7 +4544,7 @@ void printChartValues() {
     uint_fast8_t tChartDataTextHeight = sChartDataTextSize + 1; // Quick hack to avoid deleting of top of character 'l' in Sample periods by capacity printing.
     uint16_t tYPosition = (BlueDisplay1.getRequestedDisplayHeight() - (tChartDataTextHeight * 10));
 
-// Battery type
+// display battery type or "Logger" below the buttons
     const char *aBatteryTypePtr;
     if (ChartStartValues.inLoggerModeAndFlags) {
         aBatteryTypePtr = "Logger";
@@ -4643,6 +4650,8 @@ int8_t getDelta(uint8_t a4BitDelta) {
  *
  * Version 7.2 - 03/2026
  * - BatteryTypeInfoArray now in FLASH memory.
+ * - No temporary disconnection of the load for Power bank. The load value is always displayed.
+ * - Fixed missing display of periods 56 to 67.
  *
  * Version 7.1 - 02/2026
  * - Fixed overflow bug relevant after 336 storage periods.
