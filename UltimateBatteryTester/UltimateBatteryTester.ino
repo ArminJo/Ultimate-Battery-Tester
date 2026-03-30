@@ -129,7 +129,7 @@ LiquidCrystal myLCD(7, 8, 3, 4, 5, 6);
 // the next Analog pins are used as digital outputs for range and load switching (and buzzer)
 #define VOLTAGE_RANGE_EXTENSION_1_PIN   A1 // PC1 This pin is low to extend the voltage range from 2.2 volt to 4.4 volt
 #define VOLTAGE_RANGE_EXTENSION_2_PIN   A2 // PC2 This pin is low to extend the voltage range from 2.2 volt to 17.6 volt
-#define VOLTAGE_RANGE_EXTENSION_3_PIN   A3 // PC3 This pin is low to extend the voltage range from 2.2 volt to  volt
+#define VOLTAGE_RANGE_EXTENSION_3_PIN   A3 // PC3 This pin is low to extend the voltage range from 2.2 volt to 64.9 volt
 #define ADC_CHANNEL_CURRENT                     6 // Pin A6 for Nano. This is the ADC channel, not the pin for current measurement!
 #define ADC_CHANNEL_LOGGER_CURRENT              7 // Pin A7 for Nano. This is the ADC channel, not the pin for current measurement for Logger!
 #define HIGHEST_ASSEMBLED_VOLTAGE_RANGE_MASK    0x08 // A3 - This pin must be actually assembled with a resistor
@@ -447,7 +447,7 @@ void readAndDrawEEPROMValues();
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT        3400 // Switch off voltage for Li-ion standard capacity measurement
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_LOW    3000 // Switch off voltage for extended capacity measurement
 #define LI_ION_SWITCH_OFF_VOLTAGE_MILLIVOLT_ZERO    180
-#define LI_ION_SWITCH_OFF_SETTLING_MILLIS            20 // Time to switch of load to before measuring no load voltage - heuristic value
+#define LI_ION_SWITCH_OFF_SETTLING_MILLIS            10 // Time to switch of load to before measuring no load voltage - heuristic value
 
 #define NIMH_STANDARD_FULL_VOLTAGE_MILLIVOLT       1340 // Start voltage for NI-MH standard capacity measurement
 #define NIMH_SWITCH_OFF_VOLTAGE_MILLIVOLT          1100 // Switch off voltage for NI-MH capacity measurement
@@ -460,7 +460,7 @@ void readAndDrawEEPROMValues();
 #define HIGH_LOAD   2 // 3 ohm
 
 #define TYPE_INDEX_NO_BATTERY    0
-#define TYPE_INDEX_DEFAULT       6
+#define TYPE_INDEX_LI_ION        6
 #define TYPE_INDEX_MAX          10
 #define TYPE_INDEX_LOGGER       42
 
@@ -956,6 +956,7 @@ void setup() {
     readAndProcessEEPROMData(true); // First call in setup() and parameter is true. Initialize data for append and print
 #endif
 
+    forceDisplayOfCurrentValues();
     printStoredDataLCD_BD();
     printlnIfNotPlotterOutput(); // end of stored data
 
@@ -2014,12 +2015,12 @@ uint8_t getVoltageAttenuationFactor() {
 
 /*
  * Sets NoLoadMillivolt or LoadMillivolt
- * Provides automatic range switch between 2.2, 4.4 and 14 (up to 20 with 5V VCC) volt range
- * The ranges are realized by a
+ * Provides automatic range switch between 2.2 V, 4.4 V, 17.6 V and 14 V (up to 20 V with 5V VCC) volt range
+ * The ranges are realized by a:
  * divider with 100 kOhm and 100 kOhm -> 2.2 V range and 2.15 mV resolution
- * divider with 100 kOhm and 33.333 kOhm (3 * 100 kOhm parallel) -> 4.4 V range and 4.3 mV resolution
- * divider with 100 kOhm and 6.666 kOhm (15 * 100 kOhm parallel or 100k + 10k + (10+15k) parallel) -> 17.6 V (1.1*16) range and 17 mV resolution
- * divider with 100 kOhm and 1,71 kOhm (100k + 1.8k + 52k parallel) -> 64.9V range and 63 mV resolution
+ * divider with 100 kOhm and 33.333 kOhm (3 * 100 kOhm parallel) at A1 -> 4.4 V range and 4.3 mV resolution
+ * divider with 100 kOhm and 6.666 kOhm (15 * 100 kOhm parallel or 100k + 10k + (10+15k) parallel) at A2 -> 17.6 V (1.1*16) range and 17 mV resolution
+ * divider with 100 kOhm and 1,71 kOhm (100k + 1.8k + 52k parallel) at A3 -> 64.9V range and 63 mV resolution
  * Does not affect the loads
  */
 uint16_t getVoltageRaw() {
@@ -2069,7 +2070,7 @@ uint16_t getVoltageRaw() {
                 // switch to lowest (2.2 V) voltage range at values below 488 in 4.4 V range by deactivating all range extension resistors
                 sTesterInfo.VoltageRange = 0;
                 sTesterInfo.VoltageRangePortMask = LOWEST_VOLTAGE_RANGE_PORT_MASK_DUMMY; // Dummy in order to be able to shift for higher attenuator factors
-                DDRC = OTHER_OUTPUTS_PIN_MASK; // Set bit for A1/PC1 to A3/PC3
+                DDRC = OTHER_OUTPUTS_PIN_MASK; // Deactivating all range extension resistors, by converting according pins to input
                 tInputVoltageRaw = readADCChannel();
             }
         } else {
@@ -2359,8 +2360,8 @@ void getPeriodicAccumulatingLoggerValues() {
 }
 
 /*
- * Maximal current for a 0.2 ohm shunt resistor is 5.5 A, and resolution is 5.4 mA.
- * Maximal current for the 2 ohm battery shunt resistor is 550 mA, and resolution is 0.54 mA.
+ * Maximal current for a 0.2 ohm shunt resistor is 5.46 A, and resolution is 5.4 mA.
+ * Maximal current for the 2 ohm battery shunt resistor is 546 mA, and resolution is 0.54 mA.
  */
 void getCurrent(uint8_t aADCChannel, uint16_t aShuntResistorMilliohm) {
     setADCChannelForNextConversionAndWaitUsingInternalReference(aADCChannel);
@@ -2402,6 +2403,38 @@ void getBatteryValues() {
         // Deactivate load and wait for voltage to settle
         // During the no load period switch on the LED
         digitalWrite(LED_BUILTIN, HIGH);
+//        if (sBatteryOrLoggerInfo.BatteryTypeIndex == TYPE_INDEX_LI_ION) {
+//            /*
+//             * Does not work with the restriction of 545 mA maximum current. For future use.
+//             * Only for single Li-ion test of dynamic ESR between 12 and 3 Ohm
+//             */
+//            setLoad(HIGH_LOAD);
+//            delay(5);
+//            uint16_t tLowLoadMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt;
+//            uint16_t tLowLoadMilliampere = sBatteryOrLoggerInfo.Milliampere;
+//            getCurrent(ADC_CHANNEL_CURRENT, ESR_SHUNT_RESISTOR_MILLIOHM);
+//            getVoltageMillivolt();
+//            /*
+//             * ESR computation
+//             */
+//            uint16_t tESRDeltaMillivolt = tLowLoadMillivolt - sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt;
+//            uint32_t tESRMilliohm = (tESRDeltaMillivolt * 1000L) / (sBatteryOrLoggerInfo.Milliampere - tLowLoadMilliampere);
+//
+//            Serial.print(sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt);
+//            Serial.print(F("mV, "));
+//            Serial.print(tLowLoadMillivolt);
+//            Serial.print(F("mV "));
+//            Serial.print(tLowLoadMilliampere);
+//            Serial.print(F("mA, "));
+//
+//            Serial.print(sBatteryOrLoggerInfo.Voltages.Battery.LoadMillivolt);
+//            Serial.print(F("mV "));
+//            Serial.print(sBatteryOrLoggerInfo.Milliampere);
+//            Serial.print(F("mA "));
+//
+//            Serial.print(tESRMilliohm);
+//            Serial.println(F("mOhm"));
+//        }
         setLoad(NO_LOAD);
         delay(sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis);
         getVoltageMillivolt(); // get current battery NoLoadMillivolt
@@ -2710,7 +2743,7 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
             if (sBatteryOrLoggerInfo.BatteryTypeIndex == TYPE_INDEX_NO_BATTERY) {
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
                 if (!sOnlyPlotterOutput) { // do not disturb Arduino plotter with BD output
-                    BlueDisplay1.writeString(F("\rNo battery      "));
+                    BlueDisplay1.writeString(F("\rNo battery      ")); // if not connected, print this string too, saves println :-)
                 }
 #endif
 #if defined(USE_LCD)
@@ -2720,17 +2753,14 @@ bool detectBatteryOrLoggerVoltageOrCurrentLCD_BD() {
             } else {
                 // print voltage before the delay for LCD display
                 printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD();
-#if !defined(SUPPRESS_SERIAL_PRINT)
+
+#if defined(SUPPORT_BLUEDISPLAY_CHART)
                 if (!sOnlyPlotterOutput) {
-                    // The same info is printed below by writeString(F("\rFound ")); ...
-                    Serial.print(sCurrentBatteryTypeInfo.TypeName);
-                    Serial.println(F(" found"));
+                    BlueDisplay1.writeString(F("\rFound "));
+                    BlueDisplay1.writeString(sCurrentBatteryTypeInfo.TypeName); // if not connected, print this string too, saves println :-)
                 }
 #endif
-#if defined(SUPPORT_BLUEDISPLAY_CHART)
-                BlueDisplay1.writeString(F("\rFound "));
-                BlueDisplay1.writeString(sCurrentBatteryTypeInfo.TypeName);
-#endif
+
 #if defined(USE_LCD)
                 // The current battery voltage is displayed, so clear "No batt." message selectively
                 myLCD.setCursor(7, 0);
@@ -2860,7 +2890,7 @@ void printCapacity5DigitsLCD_BD() {
  * otherwise we print average ESR.
  */
 void printESR() {
-    uint16_t tMilliohm; // Compiler complains about initialize variable, which is wrong
+    uint16_t tMilliohm; // Compiler complains about uninitialized variable, which is wrong
     if (sTesterInfo.MeasurementState == STATE_INITIAL_SAMPLES && sBatteryOrLoggerInfo.Milliampere != 0) {
         tMilliohm = sESRHistory[0];
     } else {
@@ -3024,7 +3054,9 @@ void forceDisplayOfCurrentValues() {
     sLastDiplayedValues.Milliampere = INT16_MAX;
     sLastDiplayedValues.ESRMilliohm = INT16_MAX;
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-    clearValueArea();
+    if (BlueDisplay1.isConnectionEstablished()) {
+        clearValueArea();
+    }
 #endif
 }
 
@@ -3140,7 +3172,8 @@ void printMeasurementValuesLCD_BD() {
     if (sTesterInfo.MeasurementState != STATE_WAITING_FOR_BATTERY_OR_EXTERNAL) {
         /*
          * STATE_SETUP_AND_READ_EEPROM + STATE_SAMPLE_AND_STORE_TO_EEPROM: "0.061o h 1200mAh" using sBatteryOrLoggerInfo.ESRMilliohm
-         * STATE_INITIAL_SAMPLES:                               "0.061o l  0.128V" using current ESR from sESRHistory[0]
+         * STATE_INITIAL_SAMPLES:                                          "0.061o l  0.128V" using current ESR from sESRHistory[0]
+         *                                                                       ^-Ohm
          */
         if (sTesterInfo.inLoggerModeAndFlags) {
 #if !defined(SUPPRESS_SERIAL_PRINT)
@@ -4518,8 +4551,10 @@ void readAndDrawEEPROMValues() {
         printChartValues();
     }
 #if defined ENABLE_DISPLAY_OF_DATE_AND_TIME
-    printTimeAtOneLine(BUTTONS_START_X, BlueDisplay1.getRequestedDisplayHeight() - BASE_TEXT_SIZE, (BASE_TEXT_SIZE * 2) / 3,
-    COLOR16_RED, sBackgroundColor);
+    if (BlueDisplay1.isConnectionEstablished()) {
+        printTimeAtOneLine(BUTTONS_START_X, BlueDisplay1.getRequestedDisplayHeight() - BASE_TEXT_SIZE, (BASE_TEXT_SIZE * 2) / 3,
+        COLOR16_RED, sBackgroundColor);
+    }
 #endif
 }
 

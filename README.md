@@ -94,6 +94,7 @@ The battery type is detected by a fixed mapping of voltage to type in `BatteryTy
 While the Mosfet is switched on, the voltage at the 2 &ohm; shunt resistor is measured to get the current. The voltage at the battery terminal is measured to get the voltage under load.<br/>
 Every second, the Mosfet is deactivated for 10 ms or 100 ms (depending on battery type), the "no load" voltage at the battery terminal is measured and the Mosfet is switched on again.<br/>
 The formula for ESR is: **(noLoadVoltage - loadVoltage) / loadCurrent**.<br/>
+Please keep in mind, that the **maximum current which can be measured with the 2 &ohm; shunt resistor is 545 mA**.<br/>
 The internal LED is active for the time the load is detached. This results in a 1 second blinking.
 
 Every minute, current data is stored/appended to EEPROM. **The complete data is printed in Arduino Plotter format at each reboot**.
@@ -106,24 +107,23 @@ The new version of the app also supports a USB OTG connection. This eliminates t
 <br/>
 
 # Measurement of battery packs with external series load resistor
-Battery packs up to 17.2 volt (4s) can be measured too. Voltages above 14.8 volt require a 5 volt supply for the arduino internal ADC.
-Given the voltage measurement resistor network from the schematic, with Li-ion (3.7 V VCC) we can merely measure up to 14.8 V.<br/>
-Since the build in load resistor is 12 &ohm;, **the current would go up to 1.4 ampere and the power to 24 watt**, leaving 2.8 watt at the 2 &ohm; shunt resistors.<br/>
-This is too much for the resistors I used for shunt!<br/>
-The solution is to **add an additional resistor of around 20 &ohm; in series to the 10 &ohm; already built in**.
-This reduces the current to around 500 mA and power to 9 watt leaving 1 watt at the 2 &ohm; shunt resistors.<br/>
-The voltage must still be measured at the battery terminal, so I use a distinct cable for voltage measurement, normally connected to the built in load resistors / battery + cable.<br/>
-No other adaption has to be made.
+Battery packs up to 64.9 volt (15s) can also be measured.
+**However, it is important to keep the current below 545 mA**, as this is the maximum allowed for current measurement with the 2 &ohm; shunt resistor.<br/>
+This can be achieved by **adding an extra resistor in series with the built-in 12 &ohm; resistor**.<br/>
+The voltage must still be measured directly at the battery terminal.
+For this I use a distinct cable for voltage measurement, connected to the battery’s positive lead.<br/>
+No further modifications are required.
 
 <br/>
 
 # Logger function
-By connecting pin 10 to ground, logger mode is entered after startup. Voltage is still measured at the same pin as for Battery mode.
-For current measurement in Logger mode, we use an separate external shunt connected at pin A4.<br/>
-To avoid disturbing the circuit in which we are measuring the current, this shunt is typically smaller than the shunt used in battery mode.
-Its value is defined by `LOGGER_SHUNT_RESISTOR_MILLIOHM` e.g. 200 for 0.2 &ohm;.<br/>
-Cutoff / end condition is, when current drops below 50%, 25% or 12.5% of start current.
-12.5% is default and useful for logging charging circuits which reduce current at the end of charge.
+Connecting pin 10 to ground enables Logger mode after startup. In this mode, voltage is measured at the same pin used for Battery mode.
+For current measurement, Logger mode uses a separate external shunt connected to pin A4.<br/>
+To minimize interference with the circuit under test, this shunt is typically smaller than the one used in Battery mode. 
+Its resistance is defined by `LOGGER_SHUNT_RESISTOR_MILLIOHM` (e.g., 200 for 0.2 &ohm;).<br/>
+The measurement stops when the current falls below a specified fraction of the initial current. 
+Available thresholds are 50%, 25%, or 12.5%, with 12.5% as the default. 
+This default is particularly useful for logging charging circuits that gradually reduce current toward the end of the charge cycle.
 
 <br/>
 
@@ -178,18 +178,19 @@ As the program size is at around 100%, you need to burn the UNO bootloader on th
 | Overview with distinct voltage measurement cable (thin red one) to enable additional series resistors for battery packs | Top View |
 |-|-|
 | ![Overview](pictures/Overview.jpg) | ![Top View](pictures/TopView.jpg) |
-| MosFets | Reset and application sensor button |
-| ![MosFets](pictures/MosFets.jpg) | ![Reset and application sensor button](pictures/Buttons.jpg) |
-| Battery holder top view | Battery holder bottom view |
-| ![LCD Battery holder top view](pictures/BatteryHolderTop.jpg) | ![Battery holder bottom view](pictures/BatteryHolderBottom.jpg) |
+| Battery holder top view  | Reset and application sensor button |
+| ![BatteryHolderTop](pictures/BatteryHolderTop.jpg) | ![Reset and application sensor button](pictures/Buttons.jpg) |
+| Battery holder bottom view | MosFets |
+| ![Battery holder bottom view](pictures/BatteryHolderBottom.jpg) | ![Battery holder bottom view](pictures/MosFets.jpg) |
 
 # Schematics
 ![Fritzing board](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/extras/UltimateBatteryTester_Steckplatine.png)
 ![Fritzing schematics](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/extras/UltimateBatteryTester_Schaltplan.png)
 
 # Special pin usage
-If pin 10 is connected to ground, verbose output for Arduino Serial Monitor is enabled. Verbose output is not suitable for Arduino Plotter.<br/>
-If pin 11 is connected to ground, "cut off is low" is displayed and discharge ends at a lower voltage. E.g. Li-ion discharge ends at 3000 mV instead of 3500 mV.
+If **pin 9** is connected to ground, verbose output for Arduino Serial Monitor is disabled. This verbose output is not suitable for Arduino Plotter.<br/>
+If **pin 10** is connected to ground, **logger mode** is entered. I.e. current is measured at the shunt at channel 4 / A4 and voltage still at channel 0 / pin A0.<br/>
+If **pin 11** is connected to ground, `CUTOFF_LEVEL_LOW` is taken as startup default if no battery is inserted at startup, "cut off is low" is displayed and discharge ends at a lower voltage. E.g. Li-ion discharge ends at 3000 mV instead of 3500 mV.
 
 # Examples on Wokwi
 The screenshots below are taken from this [Wokwi example](https://wokwi.com/projects/381051341790948353).
