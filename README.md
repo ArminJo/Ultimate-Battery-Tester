@@ -5,7 +5,7 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 
 [![Badge License: GPLv3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](https://www.gnu.org/licenses/gpl-3.0)
  &nbsp; &nbsp;
-[![Badge Version](https://img.shields.io/github/v/release/ArminJo/Ultimate-Battery-Tester?include_prereleases&color=yellow&logo=DocuSign&logoColor=white)](https://github.com/ArminJo/Ultimate-Battery-Tester/releases/latest)
+[![Badge Version](https://img.shields.io/github/v/release/ArminJo/Ultimate-Battery-Tester?color=yellow&logo=DocuSign&logoColor=white)](https://github.com/ArminJo/Ultimate-Battery-Tester/releases/latest)
  &nbsp; &nbsp;
 [![Badge Commits since latest](https://img.shields.io/github/commits-since/ArminJo/Ultimate-Battery-Tester/latest?color=yellow)](https://github.com/ArminJo/Ultimate-Battery-Tester/commits/master)
  &nbsp; &nbsp;
@@ -32,7 +32,7 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 - [Measurement of battery packs with external series load resistor](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#measurement-of-battery-packs-with-external-series-load-resistor)
 - [Logger function](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#logger-function)
 - [Sample screenshots](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#sample-screenshots)
-- [Sample plots](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#sample-plots)
+- [Sample Arduino 1.89 IDE plots](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#sample-arduino-189-ide-plots)
 - [Compile with the Arduino IDE](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#compile-with-the-arduino-ide)
 - [Pictures](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#pictures)
 - [Schematics](https://github.com/ArminJo/Ultimate-Battery-Tester?tab=readme-ov-file#schematics)
@@ -133,8 +133,8 @@ The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module**
 
 |  |  |
 |-|-|
-| ![Li-ion_1100mAh](pictures/Li-ion_1100mAh.png) | ![LiFePO4_5300mAh](pictures/LiFePO4_5300mAh.png) |
-| Used Li-ion battery with 1100 mAh. | LiFePO4 battery with 5300 mAh.  |
+| ![Li-ion](pictures/18650_ToZero.png) | ![LiFePO4_5300mAh](pictures/LiFePO4_5300mAh.png) |
+| Used 18650 Li-ion battery. | LiFePO4 battery with 5300 mAh.  |
 | | |
 | ![Used_Samsung_ICR18659-24B](pictures/Used_Samsung_ICR18659-24B.png) | ![Used_Samsung_ICR18659-24B_to_Zero](pictures/Used_Samsung_ICR18659-24B_to_Zero.png) |
 | Used Samsung ICR18659 24B with 1100 mAh. | The same Samsung ICR18659 24B **accidentally discharged to almost zero**. Here you can see the small capacity below 3.4 V. After directly recharging with 10 mA until 2.8 V and then with 30 mA to 3.5 V the capacity and ESR were like before, which I did not expect :-). |
@@ -142,11 +142,16 @@ The Arduino is connected to the tablet via **OSB OTG** or a **Bluetooth module**
 | ![INR18650MH1](pictures/INR18650MH1.png) | ![755590_4459mAh](pictures/755590_4459mAh.png) |
 | A LG INR18650MH1 cell salvaged from a scooter battery. |  A new 755590 pouch cell with 4459mAh and an ESR of 0.14 &ohm;, maybe because of the protection circuit. |
 | | |
-| ![VapePouch](pictures/VapePouch_550.png) |  |
-| A 550 mAh pouch cell salvaged from a vape. |   |
+| ![VapePouch](pictures/VapePouch_550.png) | ![VapeRound](pictures/Vape_13350_ToZero.png) |
+| A 550 mAh pouch cell salvaged from a vape. | A 13350  450 mAh? cell salvaged from a vape. |
+| | |
+| ![Dyson pack](pictures/6S_Dyson.png) | |
+| A 6s Dyson battery pack. | |
+
+
 <br/>
 
-# Sample plots
+# Sample Arduino 1.89 IDE plots
 The plots are created with the Arduino 1.x Serial Plotter. The Arduino 2.x Serial Plotter is not as powerful and uses a different data format.
 
 Plot for **2 parallel 18660 Li-Ion cells**.<br/>

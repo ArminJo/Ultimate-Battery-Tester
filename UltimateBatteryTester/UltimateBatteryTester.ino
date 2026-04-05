@@ -78,7 +78,13 @@
 #if !defined(ADC_INTERNAL_REFERENCE_MILLIVOLT)
 #define ADC_INTERNAL_REFERENCE_MILLIVOLT    1100 // Change to value measured at the AREF pin. If value > real AREF voltage, measured values are > real values
 #endif
-
+/*
+ * Correct displayed voltage to be equal voltage at terminal for every range separately.
+ * !!! Can be done only at stopped measurement, otherwise we likely measure externally also the voltage increase during the no-load period !!!
+ * Not required for my version using 1% resistors.
+ * Changing values currently only available for BD version!
+ */
+//#define SUPPORT_VOLTAGE_CORRECTION // ~350 bytes
 /*
  * In WOKWI, we cannot simulate voltage division with resistors, so me must tweak it
  */
@@ -92,6 +98,7 @@
 // This requires 1304 bytes program memory and exceeds 100% in Arduino IDE, because the "-mrelax" linker option is not set there.
 //#define ENABLE_DISPLAY_OF_DATE_AND_TIME
 #endif
+
 //
 /*
  * Choose the type of LCD you use
@@ -174,6 +181,13 @@ bool sLastValueOfCutoffLevelPin; // To support prints and voltage setting at cha
 #define ATTENUATION_FACTOR_VOLTAGE_RANGE_1      4      // Divider with 100 kOhm and 33.333 kOhm -> 4.4 V range
 #define ATTENUATION_FACTOR_VOLTAGE_RANGE_2      16     // Divider with 100 kOhm and 6.666 kOhm -> 17.6 V range
 #define ATTENUATION_FACTOR_VOLTAGE_RANGE_3      59     // Divider with 100 kOhm and 1.7 kOhm -> 64.9 V range - 59 to avoid 16 bit overflow for ...Millivolt
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+#define NUMBER_OF_CORRECTED_VOLTAGE_RANGES      (HIGHEST_ASSEMBLED_VOLTAGE_RANGE + 1) // 4
+#else
+#define NUMBER_OF_CORRECTED_VOLTAGE_RANGES      0
+#endif
+uint8_t const sVoltageAttenuationFactorArray[HIGHEST_ASSEMBLED_VOLTAGE_RANGE + 1] = { ATTENUATION_FACTOR_VOLTAGE_RANGE_0,
+ATTENUATION_FACTOR_VOLTAGE_RANGE_1, ATTENUATION_FACTOR_VOLTAGE_RANGE_2, ATTENUATION_FACTOR_VOLTAGE_RANGE_3 };
 
 /*
  * Imports and definitions for start/stop button at pin 2
@@ -366,7 +380,7 @@ const char MeasurementStateButtonStringTesting[] PROGMEM = "Testing";
 const char MeasurementStateButtonStringRunning[] PROGMEM = "Running";
 const char MeasurementStateButtonStringStopped[] PROGMEM = "Stopped"; // stopped manually
 const char MeasurementStateButtonStringFinished[] PROGMEM = "Finished"; // stopped by detecting end condition
-const char *const sMeasurementStateButtonTextStringArray[] PROGMEM = { MeasurementStateButtonStringBooting,
+const char *const sMeasurementStateButtonTextPGMStringArray[] PROGMEM = { MeasurementStateButtonStringBooting,
         MeasurementStateButtonStringWaiting, MeasurementStateButtonStringTesting, MeasurementStateButtonStringRunning,
         MeasurementStateButtonStringStopped, MeasurementStateButtonStringFinished };
 BDButton TouchButtonMeasurementState;
@@ -383,11 +397,15 @@ BDButton TouchButtonCutoffHighLowZero;
 void setCutoffHighLowZeroButtonTextAndDrawButton();
 
 BDButton TouchButtonBatteryLogger;
-//BDButton TouchButtonRedraw;
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+BDButton TouchButtonVoltageCorrectionPlus;
+BDButton TouchButtonVoltageCorrectionMinus;
+#endif
 BDButton TouchButtonBrightness; // Brightness handling costs 400 byte
-BDButton TouchButtonOnlyTextVolt;
-BDButton TouchButtonOnlyTextESR;
-BDButton TouchButtonOnlyTextAmpere;
+//BDButton TouchButtonOnlyTextVolt;
+//BDButton TouchButtonOnlyTextESR;
+//BDButton TouchButtonOnlyTextAmpere;
+//void drawTextButtons();
 
 void connectHandler(void);
 
@@ -396,13 +414,12 @@ void initDisplay(void);
 void redrawDisplay(void);
 void clearValueArea();
 void drawButtons();
-void drawTextButtons();
+void drawChartLegend();
 void clearAndDrawChart();
 
 void changeBrightness();
 void doBrightness(BDButton *aTheTouchedButton, int16_t aValue);
 
-//void printMeasurementValues();
 void printChartValues();
 void printCapacityValue();
 void readAndDrawEEPROMValues();
@@ -655,8 +672,8 @@ EEMEM EEPROMStartValuesStruct EEPROMStartValues;
 #if defined(TEST)
 #define MAX_NUMBER_OF_STORAGE_PERIODS   9
 #else
-// EEPROM size for values is (1024 - sizeof(EEPROMStartValues)) / 3 = 108 / 3 = 336
-#define MAX_NUMBER_OF_STORAGE_PERIODS      (((E2END - sizeof(EEPROMStartValuesStruct)) / 3) & ~0x01) // 336 (+ the initial value) For compressing it is forced to be even
+// EEPROM size for values is (1024 - sizeof(EEPROMStartValues)) / 3 = 1009 / 3 = 336 or (1024 - sizeof(EEPROMStartValues) - 4) / 3 = 1005 / 3 = 335 for SUPPORT_VOLTAGE_CORRECTION
+#define MAX_NUMBER_OF_STORAGE_PERIODS      (((((E2END + 1) - sizeof(EEPROMStartValuesStruct)) - NUMBER_OF_CORRECTED_VOLTAGE_RANGES) / 3) & ~0x01) // 336 / 334 (+ the initial value) For compressing it is forced to be even
 #endif
 struct EEPROMData {
     int8_t DeltaMillivolt; // one 8 bit delta
@@ -664,6 +681,12 @@ struct EEPROMData {
     int8_t DeltaESRMilliohm;
 };
 EEMEM EEPROMData EEPROMDataArray[MAX_NUMBER_OF_STORAGE_PERIODS];
+
+// Place it at the end of EEPROM to be compatible
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+int8_t sVoltageAttenuationFactorCorrectionArray[NUMBER_OF_CORRECTED_VOLTAGE_RANGES];
+EEMEM int8_t EEPROMVoltageAttenuationFactorCorrectionArray[NUMBER_OF_CORRECTED_VOLTAGE_RANGES];
+#endif
 
 struct ValuesForDeltaStorageStruct {
     uint16_t lastStoredVoltageNoLoadMillivolt;
@@ -699,7 +722,7 @@ struct ValuesForChartScaling {
 
 void getVoltageMillivolt();
 void addToCapacity();
-uint8_t getVoltageAttenuationFactor();
+uint16_t getVoltageAttenuationFactor();
 uint16_t getVoltageRaw();
 void setBatteryTypeIndex(uint8_t aBatteryTypeIndex);
 bool setBatteryTypeIndexFromVoltage(uint16_t aBatteryVoltageMillivolt);
@@ -877,6 +900,14 @@ void setup() {
     myLCD.print(F("Battery Tester "));
     myLCD.setCursor(0, 1);
     myLCD.print(F(VERSION_EXAMPLE "  " __DATE__));
+#endif
+
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+    /*
+     * Read voltage factor correction values for the 4 voltage ranges
+     */
+    eeprom_read_block(&sVoltageAttenuationFactorCorrectionArray, &EEPROMVoltageAttenuationFactorCorrectionArray,
+    NUMBER_OF_CORRECTED_VOLTAGE_RANGES);
 #endif
 
     /******************************
@@ -1973,8 +2004,7 @@ void getVoltageMillivolt() {
     /*
      * Compute voltage from RawVoltage and AttenuationFactor
      */
-    uint16_t tCurrentBatteryVoltageMillivolt = (((uint32_t) (ADC_INTERNAL_REFERENCE_MILLIVOLT * getVoltageAttenuationFactor())
-            * tInputVoltageRaw) / 1023);
+    uint16_t tCurrentBatteryVoltageMillivolt = (((uint32_t) (getVoltageAttenuationFactor()) * tInputVoltageRaw) / 1023);
 
     if (sBatteryOrLoggerInfo.LoadState == NO_LOAD) {
         sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt = tCurrentBatteryVoltageMillivolt;
@@ -1997,18 +2027,17 @@ void getVoltageMillivolt() {
 #endif
 }
 
-uint8_t getVoltageAttenuationFactor() {
-    uint8_t tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_0; // Factor 2, 2.2 V range
-    if (sTesterInfo.VoltageRange == 1) {
-        tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_1;
-#if HIGHEST_ASSEMBLED_VOLTAGE_RANGE >= 2
-    } else if (sTesterInfo.VoltageRange == 2) {
-        tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_2;
-#  if HIGHEST_ASSEMBLED_VOLTAGE_RANGE >= 3
-    } else if (sTesterInfo.VoltageRange == 3) {
-        tVoltageAttenuationFactor = ATTENUATION_FACTOR_VOLTAGE_RANGE_3;
-#  endif
+uint16_t getVoltageAttenuationFactor() {
+    uint16_t tVoltageAttenuationFactor;
+    for (uint8_t i = 0; i < HIGHEST_ASSEMBLED_VOLTAGE_RANGE + 1; ++i) {
+        if (sTesterInfo.VoltageRange == i) {
+            tVoltageAttenuationFactor = sVoltageAttenuationFactorArray[i] * (ADC_INTERNAL_REFERENCE_MILLIVOLT
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+                    + sVoltageAttenuationFactorCorrectionArray[i]
 #endif
+                    );
+            break;
+        }
     }
     return tVoltageAttenuationFactor;
 }
@@ -3020,8 +3049,8 @@ bool printMilliampere4DigitsLCD_BD() {
         if ((!sTesterInfo.inLoggerModeAndFlags || (sTesterInfo.inLoggerModeAndFlags & LOGGER_EXTERNAL_CURRENT_DETECTED))
                 && BlueDisplay1.isConnectionEstablished()) {
             snprintf_P(tString, sizeof(tString), PSTR("%4u mA"), sBatteryOrLoggerInfo.Milliampere);
-            BlueDisplay1.drawText(CURRENT_POSITION_X, PROBE_VALUES_POSITION_Y, tString, PROBE_VALUES_TEXT_SIZE, CHART_CURRENT_COLOR,
-                    sBackgroundColor);
+            BlueDisplay1.drawText(CURRENT_POSITION_X, PROBE_VALUES_POSITION_Y, tString, PROBE_VALUES_TEXT_SIZE,
+            CHART_CURRENT_COLOR, sBackgroundColor);
         }
 #endif
 #if defined(USE_LCD)
@@ -3837,7 +3866,7 @@ Serial.print(sChartReadValueArrayType);
      ****************************************************/
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
     if (!aInitializeValuesForDisplayAndAppend) {  // Check is only required for SUPPORT_BLUEDISPLAY_CHART
-        printEEPROMChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false);  // store at ChartValueArrayIndex 0
+        printEEPROMChartAndPlotterGraph(tVoltageMillivolt, tMilliampere, tMilliohm, 0, false); // store at ChartValueArrayIndex 0
         Serial.println();  // for first line from printEEPROMChartAndPlotterGraph
     }
 #else
@@ -4081,7 +4110,7 @@ void setMeasurementStateButtonTextAndDrawButton() {
     }
     if (!sOnlyPlotterOutput) {
         if (BlueDisplay1.isConnectionEstablished()) {
-            TouchButtonMeasurementState.setPGMTextFromPGMArray(sMeasurementStateButtonTextStringArray, tButtonTextIndex, true);
+            TouchButtonMeasurementState.setPGMTextFromPGMArray(sMeasurementStateButtonTextPGMStringArray, tButtonTextIndex, true);
         }
     }
 }
@@ -4099,13 +4128,15 @@ void doAppend(BDButton *aTheTouchedButton, int16_t aValue) {
     switchToStateSampleAndStoreToEEPROM(0);
 }
 
-void doChartType(BDButton *aTheTouchedButton, int16_t aValue) {
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+void doVoltageCorrection(BDButton *aTheTouchedButton, int16_t aValue) {
     (void) aTheTouchedButton;
-    (void) aValue;
-//    sChartDisplayValueArrayType = aValue;
-//    readAndDrawEEPROMValues();
-    Serial.println(F("Not yet implemented"));
+    int8_t tNewValue = sVoltageAttenuationFactorCorrectionArray[sTesterInfo.VoltageRange] += aValue;
+    sVoltageAttenuationFactorCorrectionArray[sTesterInfo.VoltageRange] = tNewValue;
+    eeprom_update_byte((uint8_t*) &EEPROMVoltageAttenuationFactorCorrectionArray[sTesterInfo.VoltageRange], (uint8_t) tNewValue);
+    BlueDisplay1.debug(tNewValue);
 }
+#endif
 
 void changeBrightness() {
     if (sCurrentBrightness == BRIGHTNESS_HIGH) {
@@ -4118,9 +4149,9 @@ void changeBrightness() {
         sTextColor = COLOR16_WHITE;
         VoltageChart.setLabelColor(COLOR16_WHITE);
         VoltageChart.setBackgroundColor(COLOR16_LIGHT_GREY);
-        TouchButtonOnlyTextVolt.setButtonColor(COLOR16_LIGHT_GREY);
-        TouchButtonOnlyTextESR.setButtonColor(COLOR16_LIGHT_GREY);
-        TouchButtonOnlyTextAmpere.setButtonColor(COLOR16_LIGHT_GREY);
+//        TouchButtonOnlyTextVolt.setButtonColor(COLOR16_LIGHT_GREY);
+//        TouchButtonOnlyTextESR.setButtonColor(COLOR16_LIGHT_GREY);
+//        TouchButtonOnlyTextAmpere.setButtonColor(COLOR16_LIGHT_GREY);
         sCurrentBrightness = BRIGHTNESS_LOW;
     } else {
 // (sCurrentBrightness == BRIGHTNESS_LOW)
@@ -4130,9 +4161,9 @@ void changeBrightness() {
         BlueDisplay1.setScreenBrightness(BD_SCREEN_BRIGHTNESS_USER);
         VoltageChart.setLabelColor(COLOR16_BLACK);
         VoltageChart.setBackgroundColor(COLOR16_WHITE);
-        TouchButtonOnlyTextVolt.setButtonColor(COLOR16_WHITE);
-        TouchButtonOnlyTextESR.setButtonColor(COLOR16_WHITE);
-        TouchButtonOnlyTextAmpere.setButtonColor(COLOR16_WHITE);
+//        TouchButtonOnlyTextVolt.setButtonColor(COLOR16_WHITE);
+//        TouchButtonOnlyTextESR.setButtonColor(COLOR16_WHITE);
+//        TouchButtonOnlyTextAmpere.setButtonColor(COLOR16_WHITE);
         sCurrentBrightness = BRIGHTNESS_HIGH;
     }
 }
@@ -4236,6 +4267,7 @@ void redrawDisplay(void) {
 Serial.println(F("redrawDisplay"));
 #endif
     BlueDisplay1.clearDisplay(sBackgroundColor);
+//    BlueDisplay1.clearDisplay(COLOR16_LIGHT_GREY); // to see regions written by program
     forceDisplayOfCurrentValues();
     drawButtons();
     readAndDrawEEPROMValues(); // draws the charts and calls printChartValues() and printTimeAtOneLine() at the end
@@ -4325,31 +4357,49 @@ Serial.println(BlueDisplay1.getHostDisplayHeight());
     TouchButtonBrightness.init(&tBDButtonPGMParameterStruct);
     TouchButtonBrightness.setButtonTextColor(COLOR16_WHITE);
 
-    /*
-     * 3 text buttons with white background
-     */
-    tBDButtonPGMParameterStruct.aWidthX = BUTTON_WIDTH - BASE_TEXT_SIZE;
-    tBDButtonPGMParameterStruct.aPositionX = CHART_START_X + 4;
-    tBDButtonPGMParameterStruct.aPositionY = BlueDisplay1.getRequestedDisplayHeight() / 6;
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+    // Voltage correction buttons
+    tBDButtonPGMParameterStruct.aPositionX = 0;
+    tBDButtonPGMParameterStruct.aPositionY = 0;
+    tBDButtonPGMParameterStruct.aValue = 1;
+    tBDButtonPGMParameterStruct.aWidthX = BASE_TEXT_SIZE;
+    tBDButtonPGMParameterStruct.aHeightY = BASE_TEXT_SIZE + 1;
+    tBDButtonPGMParameterStruct.aTextSize = BASE_TEXT_SIZE / 2;
     tBDButtonPGMParameterStruct.aButtonColor = sBackgroundColor;
-    tBDButtonPGMParameterStruct.aOnTouchHandler = &doChartType;
-    tBDButtonPGMParameterStruct.aValue = TYPE_VOLTAGE;
-    tBDButtonPGMParameterStruct.aPGMText = F("Volt");
-    TouchButtonOnlyTextVolt.init(&tBDButtonPGMParameterStruct);
-    TouchButtonOnlyTextVolt.setButtonTextColor(CHART_VOLTAGE_COLOR);
+    tBDButtonPGMParameterStruct.aOnTouchHandler = &doVoltageCorrection;
+    tBDButtonPGMParameterStruct.aPGMText = F("+");
+    TouchButtonVoltageCorrectionPlus.init(&tBDButtonPGMParameterStruct);
 
-    tBDButtonPGMParameterStruct.aPositionX += (BASE_TEXT_SIZE * 4);
-    tBDButtonPGMParameterStruct.aValue = TYPE_ESR;
-    tBDButtonPGMParameterStruct.aPGMText = F("Ohm");
-    TouchButtonOnlyTextESR.init(&tBDButtonPGMParameterStruct);
-    TouchButtonOnlyTextESR.setButtonTextColor(CHART_ESR_COLOR);
+    tBDButtonPGMParameterStruct.aPositionY = BASE_TEXT_SIZE + 2;
+    tBDButtonPGMParameterStruct.aValue = -1;
+    tBDButtonPGMParameterStruct.aPGMText = F("-");
+    TouchButtonVoltageCorrectionMinus.init(&tBDButtonPGMParameterStruct);
+#endif
 
-    tBDButtonPGMParameterStruct.aPositionX += (BASE_TEXT_SIZE * 4);
-    tBDButtonPGMParameterStruct.aValue = TYPE_CURRENT;
-    tBDButtonPGMParameterStruct.aPGMText = F("Ampere");
-    TouchButtonOnlyTextAmpere.init(&tBDButtonPGMParameterStruct);
-    TouchButtonOnlyTextAmpere.setButtonTextColor(CHART_CURRENT_COLOR);
-
+    /*
+     * 3 text buttons with white background, not yet implemented
+     */
+//    tBDButtonPGMParameterStruct.aWidthX = BUTTON_WIDTH - BASE_TEXT_SIZE;
+//    tBDButtonPGMParameterStruct.aPositionX = CHART_START_X + 4;
+//    tBDButtonPGMParameterStruct.aPositionY = BlueDisplay1.getRequestedDisplayHeight() / 6;
+//    tBDButtonPGMParameterStruct.aButtonColor = sBackgroundColor;
+//    tBDButtonPGMParameterStruct.aOnTouchHandler = &doChartType;
+//    tBDButtonPGMParameterStruct.aValue = TYPE_VOLTAGE;
+//    tBDButtonPGMParameterStruct.aPGMText = F("Volt");
+//    TouchButtonOnlyTextVolt.init(&tBDButtonPGMParameterStruct);
+//    TouchButtonOnlyTextVolt.setButtonTextColor(CHART_VOLTAGE_COLOR);
+//
+//    tBDButtonPGMParameterStruct.aPositionX += (BASE_TEXT_SIZE * 4);
+//    tBDButtonPGMParameterStruct.aValue = TYPE_CURRENT;
+//    tBDButtonPGMParameterStruct.aPGMText = F("Ampere");
+//    TouchButtonOnlyTextAmpere.init(&tBDButtonPGMParameterStruct);
+//    TouchButtonOnlyTextAmpere.setButtonTextColor(CHART_CURRENT_COLOR);
+//
+//    tBDButtonPGMParameterStruct.aPositionX += (BASE_TEXT_SIZE * 4);
+//    tBDButtonPGMParameterStruct.aValue = TYPE_ESR;
+//    tBDButtonPGMParameterStruct.aPGMText = F("Ohm");
+//    TouchButtonOnlyTextESR.init(&tBDButtonPGMParameterStruct);
+//    TouchButtonOnlyTextESR.setButtonTextColor(CHART_ESR_COLOR);
 // Settings for Text messages
     BlueDisplay1.setWriteStringPosition(PROBE_VALUES_POSITION_X, MESSAGE_START_POSITION_Y);
     BlueDisplay1.setWriteStringSizeAndColorAndFlag(sChartDataTextSize, sTextColor, sBackgroundColor, false);
@@ -4390,28 +4440,44 @@ void clearAndDrawChart() {
     VoltageChart.drawYAxisAndLabels();
     VoltageChart.drawGrid();
     /*
-     * Text buttons are overwritten by chart
+     * Chart legend is overwritten by chart
      */
-    drawTextButtons();
+    drawChartLegend();
 }
 
 /*
- * Text buttons are overwritten by chart
+ * Text is overwritten by chart
  */
-void drawTextButtons() {
-    TouchButtonOnlyTextVolt.drawButton();
-    TouchButtonOnlyTextAmpere.drawButton();
+void drawChartLegend() {
+    uint16_t tPoxY = BlueDisplay1.getRequestedDisplayHeight() / 6;
+    BlueDisplay1.drawText(CHART_START_X + 4, tPoxY, F("Volt"), BASE_TEXT_SIZE, CHART_VOLTAGE_COLOR, sBackgroundColor);
+    BlueDisplay1.drawText(CHART_START_X + (BASE_TEXT_SIZE * 4) + 4, tPoxY, F("Ampere"), BASE_TEXT_SIZE, CHART_CURRENT_COLOR,
+            sBackgroundColor);
     if (!sTesterInfo.inLoggerModeAndFlags) {
-        TouchButtonOnlyTextESR.drawButton();
+        BlueDisplay1.drawText(CHART_START_X + (BASE_TEXT_SIZE * 9) + 4, tPoxY, F("Ohm"), BASE_TEXT_SIZE, CHART_ESR_COLOR,
+                sBackgroundColor);
     }
 }
 
+/*
+ * Text buttons for Chart legend are overwritten by chart
+ */
+//void drawTextButtons() {
+//    TouchButtonOnlyTextVolt.drawButton();
+//    TouchButtonOnlyTextAmpere.drawButton();
+//    if (!sTesterInfo.inLoggerModeAndFlags) {
+//        TouchButtonOnlyTextESR.drawButton();
+//    }
+//}
 void drawButtons() {
     setMeasurementStateButtonTextAndDrawButton();
     setCutoffHighLowZeroButtonTextAndDrawButton();
     setBatteryLoggerButtonTextAndDrawButton();
-//    TouchButtonRedraw.drawButton();
     TouchButtonBrightness.drawButton();
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+    TouchButtonVoltageCorrectionPlus.drawButton();
+    TouchButtonVoltageCorrectionMinus.drawButton();
+#endif
     if (sTesterInfo.MeasurementState == STATE_INITIAL_SAMPLES) {
         TouchButtonAppend.drawButton();
     }
@@ -4422,7 +4488,8 @@ void drawButtons() {
  * It removes display of count
  */
 void clearValueArea() {
-    BlueDisplay1.fillRectRel(0, 0, BlueDisplay1.getRequestedDisplayWidth(), MESSAGE_START_POSITION_Y - 1, sBackgroundColor);
+    BlueDisplay1.fillRect(BASE_TEXT_SIZE, 0, BlueDisplay1.getRequestedDisplayWidth(), MESSAGE_START_POSITION_Y - 1,
+            sBackgroundColor);
 }
 
 #define GRIDS_VERTICAL_Y  7
@@ -4682,6 +4749,9 @@ int8_t getDelta(uint8_t a4BitDelta) {
  * Ideas for Version 8.0
  * - no arduino serial, only BD status line
  * - constants like shunt resistor as variables (float?), to be set by user
+ *
+ * Version 7.3 - 04/2026
+ * - Added optional SUPPORT_VOLTAGE_CORRECTION and VoltageAttenuationFactorCorrectionArray.
  *
  * Version 7.2 - 03/2026
  * - BatteryTypeInfoArray now in FLASH memory.
