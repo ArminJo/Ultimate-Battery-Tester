@@ -5,7 +5,7 @@ Program for measuring the ESR (equivalent series resistance) of a battery and pr
 
 [![Badge License: GPLv3](https://img.shields.io/badge/License-GPLv3-brightgreen.svg)](https://www.gnu.org/licenses/gpl-3.0)
  &nbsp; &nbsp;
-[![Badge Version](https://img.shields.io/github/v/release/ArminJo/Ultimate-Battery-Tester?include_prereleases&color=yellow&logo=DocuSign&logoColor=white)](https://github.com/ArminJo/Ultimate-Battery-Tester/releases/latest)
+[![Badge Version](https://img.shields.io/github/v/release/ArminJo/Ultimate-Battery-Tester?color=yellow&logo=DocuSign&logoColor=white)](https://github.com/ArminJo/Ultimate-Battery-Tester/releases/latest)
  &nbsp; &nbsp;
 [![Badge Commits since latest](https://img.shields.io/github/commits-since/ArminJo/Ultimate-Battery-Tester/latest?color=yellow)](https://github.com/ArminJo/Ultimate-Battery-Tester/commits/master)
  &nbsp; &nbsp;
