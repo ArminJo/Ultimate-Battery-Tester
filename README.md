@@ -78,7 +78,9 @@ The cut off voltage can be changed to low values by connecting pin 11 to ground.
 <br/>
 
 # Battery ESR
-The internal resistance is an indicator of the health of the cell. E.g. if a NiMH cell has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA** instead of 1.2 V, which may be to low for the circuit to work properly.<br/>
+The Equivalent Serial Resistance / internal resistance of a cell is an indicator of the health of that cell. 
+E.g. if a NiMH cell has an ESR of **1 &ohm;**, it delivers **only 1 volt at a current of 200 mA** instead of 1.2 V, 
+which may be to low for the circuit to work properly.<br/>
 ESR values for NiMH can go down to excellent 0.05 &ohm;.<br/>
 Typical ESR value for a 18650 Li-Ion cell is 0.05 &ohm;.
 

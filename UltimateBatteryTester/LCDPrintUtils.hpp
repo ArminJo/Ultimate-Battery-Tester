@@ -5,7 +5,6 @@
  *  Sets symbols USE_SERIAL_LCD or USE_PARALLEL_LCD and LCD_COLUMNS and LCD_ROWS
  *
  *  Copyright (C) 2024-2025  Armin Joachimsmeyer
- *  Email: armin.joachimsmeyer@gmail.com
  *
  *  This file is part of Arduino-Utils https://github.com/ArminJo/Arduino-Utils.
  *
@@ -338,6 +337,25 @@ void LCDUnitTestPrintFloatValueRightAligned(Print *aSerial, LiquidCrystal_I2C *a
 
     delay(4000);
     aSerial->println(F("LCDTestPrintFloatValueRightAligned: End"));
+}
+
+/*
+ * Like LiquidCrystal::createChar(uint8_t location, uint8_t charmap[])
+ * but with PROGMEM input
+ * This also sets cursor to 0.0
+ */
+#if defined(USE_PARALLEL_LCD)
+void LCDCreateCustomCharPGM(LiquidCrystal *aLCD, uint_fast8_t aCharacterIndex, const uint8_t *CustomPatternMapPGM)
+#else
+void LCDCreateCustomCharPGM(LiquidCrystal_I2C *aLCD, uint_fast8_t aCharacterIndex, const uint8_t *CustomPatternMapPGM)
+#endif
+        {
+    aCharacterIndex &= 0x7; // we only have 8 locations 0-7
+    aLCD->command(LCD_SETCGRAMADDR | (aCharacterIndex << 3));
+    for (uint_fast8_t i = 0; i < 8; i++) {
+        aLCD->write(pgm_read_byte(CustomPatternMapPGM++));
+    }
+    aLCD->command(LCD_SETDDRAMADDR); // set cursor to 0.0, this avoids overwriting CGRAM by next write() command.
 }
 
 /*

@@ -1,7 +1,7 @@
 /*
  *  UltimateBatteryTester.cpp
  *
- *  Measure Voltage, current, ESR (internal series resistance) and capacity of batteries.
+ *  Measure Voltage, current, ESR (Equivalent / internal Series Resistance) and capacity of batteries.
  *  Stores the values in EEPROM and display the values and the discharge graph on a tablet or mobile
  *  running the BlueDisplay app https://play.google.com/store/apps/details?id=de.joachimsmeyer.android.bluedisplay
  *  or on a connected Arduino Plotter.
@@ -40,7 +40,6 @@
  *
  *
  *  Copyright (C) 2021-2026  Armin Joachimsmeyer
- *  armin.joachimsmeyer@gmail.com
  *
  *  https://github.com/ArminJo/Ultimate-Battery-Tester
  *
@@ -83,6 +82,7 @@
  * !!! Can be done only at stopped measurement, otherwise we likely measure externally also the voltage increase during the no-load period !!!
  * Not required for my version using 1% resistors.
  * Changing values currently only available for BD version!
+ * Not yet implemented for logger.
  */
 //#define SUPPORT_VOLTAGE_CORRECTION // ~350 bytes
 /*
@@ -229,13 +229,12 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
 #endif
 
 /*
- * For Logger current, we take the average of 20 ms (50 HZ) | 769 samples to cover variations due to mains frequency
- * and 1 voltage value.
- * This is done 20 times per second and then averaged again.
+ * For Logger current and voltage, we take the average of 20 ms (50 Hz) | 769 samples to cover variations due to mains frequency
+ * Every 50 ms 20 ms current and 20 ms voltage samples are taken, so this is done 20 times per second.
  */
 #define LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT 769 // for ADC_PRESCALE32 and 20 ms (50 Hz)
 #define LOGGER_SAMPLE_PERIOD_MILLIS             50 // 20 Hz.
-#define LOGGER_SAMPLE_FREQUENCY_HZ              (MILLIS_IN_ONE_SECOND / LOGGER_SAMPLE_PERIOD_MILLIS) // 20 Hz
+#define LOGGER_SAMPLES_PER_SECOND               (MILLIS_IN_ONE_SECOND / LOGGER_SAMPLE_PERIOD_MILLIS) // 20 - times per second
 
 #define MAX_VALUES_DISPLAYED_IN_PLOTTER         500 // The Arduino 1.8 Plotter displays 500 values before scrolling
 #define BATTERY_OR_VOLTAGE_DETECTION_PERIOD_MILLIS         (MILLIS_IN_ONE_SECOND / 2) // 500 ms
@@ -289,7 +288,7 @@ bool sOnlyPlotterOutput; // Suppress all serial output except logger data. Conta
  * Border - YLabels - Chart with CO2_ARRAY_SIZE / 2 - Border - Buttons for 6 big characters - Border
  * Take border as CO2_ARRAY_SIZE / 20, button width as  4 * CO2_ARRAY_SIZE / 20 and base font size as CO2_ARRAY_SIZE / 40
  */
-#define DISPLAY_WIDTH   ((MAX_NUMBER_OF_STORAGE_PERIODS * 33L) / 20) // 556
+#define REMOTE_DISPLAY_WIDTH   ((MAX_NUMBER_OF_STORAGE_PERIODS * 33L) / 20) // 556
 #define BASE_TEXT_SIZE  (MAX_NUMBER_OF_STORAGE_PERIODS / 20) // 16 - #define TEXT_SIZE_16_HEIGHT 18, #define TEXT_SIZE_16_WIDTH 10
 #define BASE_TEXT_WIDTH ((((MAX_NUMBER_OF_STORAGE_PERIODS / 20) * 6 ) + 4) / 10) // 10
 #define BUTTON_WIDTH    (BASE_TEXT_SIZE * 5) // 80
@@ -567,16 +566,16 @@ struct lastDiplayedValuesStruct {
 } sLastDiplayedValues;
 
 struct Logger1SecondAccumulatorStruct {
-    uint32_t RawVoltageAccumulator; // normalized for 1.1 V range - maximum is 2 (AttenuationFactor) * 1023 (MaxRawVoltage) * 769 (samples) * 20 (Hz) = 31,467,480
+    uint32_t RawVoltageAccumulator; // Normalized for 1.1 V range; maximum is 59 (AttenuationFactor) * 1023 (MaxRawVoltage) * 769 (samples) * 20 (Hz) = 928.290.660
     uint32_t RawCurrentAccumulator;    // maximum is 1023 (MaxRawCurrent) * 769 (samples) * 20 (Hz) = 15,733,740
-    uint16_t RawSampleCount;           // Number of 769 samples. 20 for 20 Hz
+    uint16_t Raw20msSampleCount;       // Number of 769 samples. 20 for 20 samples per second
     uint16_t MinimumRawVoltage;
     uint16_t MaximumRawVoltage;
 } sLogger1SecondAccumulator;
 
 struct Logger1MinuteAccumulatorStruct {
-    uint16_t RawSampleCount;          // Number of 769 samples. Is 1200 every minute for 20 Hz
-    uint32_t RawVoltageAccumulator8ShiftRight; // Unshifted maximum at 2.2 V range is 1023 (MaxRawVoltage) * 769 (samples) * 20 (Hz) * 60 (sec) = 944,024,400 => 8.8 V range would be OK for unshifted value
+    uint16_t RawSampleCount;          // Number of 769 samples. Is 1200 every minute for 20 samples per second
+    uint32_t RawVoltageAccumulator8ShiftRight; // Unshifted maximum at 2.2 V range is 2 (AttenuationFactor) * 1023 (MaxRawVoltage) * 769 (samples) * 20 (samples/s) * 60 (sec) = 1.888.048.800 => 4.4 V range would be OK for unshifted value
     uint32_t RawCurrentAccumulator;  // Unshifted maximum is 1023 (MaxRawCurrent) * 769 (samples) * 20 (Hz) * 60 (sec) = 944,024,400
 } sLogger1MinuteAccumulator;
 
@@ -614,11 +613,11 @@ struct TesterInfoStruct {
     bool VoltageNoLoadIsDisplayedOnLCD;
 
     // Sample timing
-    unsigned long LastMillisOfLoggerSample;
+    unsigned long LastMillisOfLogger20msSamples;
     unsigned long LastMillisOfBatteryOrVoltageDetection;
 
     uint16_t SampleCountForStoring; // Storage time of samples is determined by this count and not by system time!
-    unsigned long LastMillisOfSample;
+    unsigned long LastMillisOfSample; // millis of last 1 second samples
 
     //Attention timing
     unsigned long LastMillisOfStateWaitingForBatteryOrVoltageBeep;
@@ -722,7 +721,9 @@ struct ValuesForChartScaling {
 
 void getVoltageMillivolt();
 void addToCapacity();
-uint16_t getVoltageAttenuationFactor();
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+uint16_t getCorrectedVoltageAttenuationFactor();
+#endif
 uint16_t getVoltageRaw();
 void setBatteryTypeIndex(uint8_t aBatteryTypeIndex);
 bool setBatteryTypeIndexFromVoltage(uint16_t aBatteryVoltageMillivolt);
@@ -731,7 +732,7 @@ void clearLogger1SecondAccumulator();
 void clearLogger1MinuteAccumulator();
 void getLogger1SecondValues();
 void getLogger1MinuteValues();
-void getPeriodicAccumulatingLoggerValues();
+void getAccumulatingLoggerValuesPeriodically();
 
 void getCurrent(uint8_t aADCChannel, uint16_t aShuntResistorMilliohm);
 void getBatteryValues();
@@ -802,7 +803,7 @@ void LCDPrintVCC(uint8_t aLCDLine);
 
 void _delay(unsigned long aDelayMillis) {
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-    delayMillisWithCheckAndHandleEvents(aDelayMillis);
+    delayMillisAndHandleEvents(aDelayMillis);
 #else
     delay(aDelayMillis);
 #endif
@@ -1058,12 +1059,12 @@ void loop() {
          * STATE_INITIAL_SAMPLES / Testing or STATE_SAMPLE_AND_STORE_TO_EEPROM / Running or STATE_STOPPED here
          */
         if (sTesterInfo.inLoggerModeAndFlags) {
-            getPeriodicAccumulatingLoggerValues();
+            getAccumulatingLoggerValuesPeriodically();
         }
         auto tMillis = millis();
         auto tTimeDifference = tMillis - sTesterInfo.LastMillisOfSample; // compute with full 32 bit -
         // For discharging, add LoadSwitchSettleTimeMillis to the second condition
-        if ((sTesterInfo.inLoggerModeAndFlags && sLogger1SecondAccumulator.RawSampleCount == LOGGER_SAMPLE_FREQUENCY_HZ)
+        if ((sTesterInfo.inLoggerModeAndFlags && sLogger1SecondAccumulator.Raw20msSampleCount == LOGGER_SAMPLES_PER_SECOND)
                 || (!sTesterInfo.inLoggerModeAndFlags && (uint16_t) tTimeDifference // - and compare only 16 bit values, because it cannot exceed 1 second much
                 >= (SAMPLE_PERIOD_OF_LOAD_ACIVATED_MILLIS + sCurrentBatteryTypeInfo.LoadSwitchSettleTimeMillis))) {
             /*
@@ -1120,7 +1121,7 @@ void loop() {
 
     if (!sTesterInfo.inLoggerModeAndFlags) {
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
-        delayMillisAndCheckForEvent(100);
+        delayMillisHandleEventsAndBreakIfEventJustReceived(100);
 #else
         delay(100);
 #endif
@@ -2004,7 +2005,12 @@ void getVoltageMillivolt() {
     /*
      * Compute voltage from RawVoltage and AttenuationFactor
      */
-    uint16_t tCurrentBatteryVoltageMillivolt = (((uint32_t) (getVoltageAttenuationFactor()) * tInputVoltageRaw) / 1023);
+#if defined(SUPPORT_VOLTAGE_CORRECTION)
+    uint16_t tCurrentBatteryVoltageMillivolt = (((uint32_t) (getCorrectedVoltageAttenuationFactor()) * tInputVoltageRaw) / 1023);
+#else
+    uint16_t tCurrentBatteryVoltageMillivolt = (((uint32_t) (sVoltageAttenuationFactorArray[sTesterInfo.VoltageRange])
+            * tInputVoltageRaw) / 1023);
+#endif
 
     if (sBatteryOrLoggerInfo.LoadState == NO_LOAD) {
         sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt = tCurrentBatteryVoltageMillivolt;
@@ -2019,7 +2025,7 @@ void getVoltageMillivolt() {
         Serial.print(F(" Range="));
         Serial.print(sTesterInfo.VoltageRange);
         Serial.print(F(" AttenuationFactor="));
-        Serial.print(getVoltageAttenuationFactor());
+        Serial.print(getCorrectedVoltageAttenuationFactor());
         Serial.print(F(" -> "));
         Serial.print(tCurrentBatteryVoltageMillivolt);
         Serial.println(F(" mV"));
@@ -2027,20 +2033,17 @@ void getVoltageMillivolt() {
 #endif
 }
 
-uint16_t getVoltageAttenuationFactor() {
-    uint16_t tVoltageAttenuationFactor;
-    for (uint8_t i = 0; i < HIGHEST_ASSEMBLED_VOLTAGE_RANGE + 1; ++i) {
-        if (sTesterInfo.VoltageRange == i) {
-            tVoltageAttenuationFactor = sVoltageAttenuationFactorArray[i] * (ADC_INTERNAL_REFERENCE_MILLIVOLT
 #if defined(SUPPORT_VOLTAGE_CORRECTION)
-                    + sVoltageAttenuationFactorCorrectionArray[i]
-#endif
-                    );
-            break;
-        }
-    }
-    return tVoltageAttenuationFactor;
+/*
+ *
+ * @return VoltageAttenuationFactor (2 to 59) * ADC_INTERNAL_REFERENCE_MILLIVOLT + Correction
+ */
+uint16_t getCorrectedVoltageAttenuationFactor() {
+    return sVoltageAttenuationFactorArray[sTesterInfo.VoltageRange] * (ADC_INTERNAL_REFERENCE_MILLIVOLT
+            + sVoltageAttenuationFactorCorrectionArray[sTesterInfo.VoltageRange]
+            );
 }
+#endif
 
 /*
  * Sets NoLoadMillivolt or LoadMillivolt
@@ -2051,6 +2054,7 @@ uint16_t getVoltageAttenuationFactor() {
  * divider with 100 kOhm and 6.666 kOhm (15 * 100 kOhm parallel or 100k + 10k + (10+15k) parallel) at A2 -> 17.6 V (1.1*16) range and 17 mV resolution
  * divider with 100 kOhm and 1,71 kOhm (100k + 1.8k + 52k parallel) at A3 -> 64.9V range and 63 mV resolution
  * Does not affect the loads
+ * Sets sTesterInfo.VoltageRange
  */
 uint16_t getVoltageRaw() {
     setADCChannelForNextConversionAndWaitUsingInternalReference(ADC_CHANNEL_FOR_VOLTAGE);
@@ -2153,7 +2157,7 @@ void addToCapacity() {
 void clearLogger1SecondAccumulator() {
     sLogger1SecondAccumulator.RawVoltageAccumulator = 0;
     sLogger1SecondAccumulator.RawCurrentAccumulator = 0;
-    sLogger1SecondAccumulator.RawSampleCount = 0;
+    sLogger1SecondAccumulator.Raw20msSampleCount = 0;
     sLogger1SecondAccumulator.MinimumRawVoltage = UINT16_MAX;
     sLogger1SecondAccumulator.MaximumRawVoltage = 0;
 }
@@ -2168,7 +2172,7 @@ void clearLogger1MinuteAccumulator() {
 
 /*
  * Compute milliampere and voltage from accumulator values and sample count
- * !!! We must be called only if sLogger1MinuteRawSampleCount == LOGGER_SAMPLE_FREQUENCY_HZ !!!
+ * !!! We must be called only if sLogger1MinuteRawSampleCount == LOGGER_SAMPLES_PER_SECOND !!!
  */
 void getLogger1SecondValues() {
     /*
@@ -2176,24 +2180,26 @@ void getLogger1SecondValues() {
      */
     sLogger1MinuteAccumulator.RawVoltageAccumulator8ShiftRight += sLogger1SecondAccumulator.RawVoltageAccumulator >> 8;
     sLogger1MinuteAccumulator.RawCurrentAccumulator += sLogger1SecondAccumulator.RawCurrentAccumulator;
-    sLogger1MinuteAccumulator.RawSampleCount += LOGGER_SAMPLE_FREQUENCY_HZ;
+    sLogger1MinuteAccumulator.RawSampleCount += LOGGER_SAMPLES_PER_SECOND;
 
     /*
      * Compute Milliampere and avoid overflow
      */
     sBatteryOrLoggerInfo.Milliampere = ((((ADC_INTERNAL_REFERENCE_MILLIVOLT * 1000L) / 1023)
             * sLogger1SecondAccumulator.RawCurrentAccumulator)
-            / (LOGGER_SHUNT_RESISTOR_MILLIOHM * LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT)); // / 3,076,000 for 200 mOhm
+            / (LOGGER_SHUNT_RESISTOR_MILLIOHM * LOGGER_SAMPLES_PER_SECOND * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT)); // / 3,076,000 for 200 mOhm
     if (sBatteryOrLoggerInfo.Milliampere >= NO_LOGGER_MILLAMPERE) {
         sTesterInfo.inLoggerModeAndFlags |= LOGGER_EXTERNAL_CURRENT_DETECTED; // set it, if once detected here
     }
     /*
      * Compute voltage and avoid overflow
-     * >> 8 and * 4 in divisor are a fast and short way to divide by 1024
+     * >> 8 and * 4 in divisor are a fast and short way to divide by 1024 (READING_FOR_AREF)
      * AverageMillivolt is a union with NoLoadMillivolt and used for display
+     * Formula for 1.1V reference is: mV = <Reading> * <ADC_INTERNAL_REFERENCE_MILLIVOLT> / READING_FOR_AREF
+     *
      */
     sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt = ((sLogger1SecondAccumulator.RawVoltageAccumulator >> 8)
-            / ((LOGGER_SAMPLE_FREQUENCY_HZ * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4L) / ADC_INTERNAL_REFERENCE_MILLIVOLT));
+            / ((LOGGER_SAMPLES_PER_SECOND * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT * 4L) / ADC_INTERNAL_REFERENCE_MILLIVOLT));
     if (sBatteryOrLoggerInfo.Voltages.Logger.AverageMillivolt > NO_BATTERY_MILLIVOLT) {
         sTesterInfo.inLoggerModeAndFlags |= LOGGER_EXTERNAL_VOLTAGE_DETECTED; // set it, if once detected here
     }
@@ -2204,7 +2210,7 @@ void getLogger1SecondValues() {
 
 #if defined(LOCAL_TRACE)
     Serial.print(F("cnt="));
-    Serial.print(sLogger1SecondAccumulator.RawSampleCount);
+    Serial.print(sLogger1SecondAccumulator.Raw20msSampleCount); // must be 20
     Serial.print(F(" Iacc="));
     Serial.print(sLogger1SecondAccumulator.RawCurrentAccumulator);
     Serial.print(' ');
@@ -2245,7 +2251,7 @@ void getLogger1MinuteValues() {
 #if defined(LOCAL_TRACE)
     Serial.println();
     Serial.print(F("cnt="));
-    Serial.print(sLogger1MinuteAccumulator.RawSampleCount);
+    Serial.print(sLogger1MinuteAccumulator.Raw20msSampleCount);
     Serial.print(F(" Iacc="));
     Serial.print(sLogger1MinuteAccumulator.RawCurrentAccumulator);
     Serial.print(' ');
@@ -2261,13 +2267,13 @@ void getLogger1MinuteValues() {
 }
 
 /*
- * First read 769 current values in 20 ms, then read 769 voltage values in 20 ms
+ * Read 769 current values in 20 ms, then  determine voltage range and read 769 voltage values in 20 ms
  * complete reading takes 40.5 ms. For voltage > 4.4V it takes 48.5 ms
  */
-void getPeriodicAccumulatingLoggerValues() {
-    auto tTimeDifference = millis() - sTesterInfo.LastMillisOfSample; // compute with full 32 bit -
+void getAccumulatingLoggerValuesPeriodically() {
+    auto tTimeDifference = millis() - sTesterInfo.LastMillisOfLogger20msSamples; // compute with full 32 bit -
     if ((unsigned int) tTimeDifference >= LOGGER_SAMPLE_PERIOD_MILLIS) { // - and compare only 16 bit values
-        sTesterInfo.LastMillisOfLoggerSample = millis();
+        sTesterInfo.LastMillisOfLogger20msSamples = millis();
         digitalWrite(LED_BUILTIN, HIGH);
 
 #if defined(IN_WOKWI)
@@ -2277,14 +2283,14 @@ void getPeriodicAccumulatingLoggerValues() {
         if (sLogger1SecondAccumulator.RawCurrentAccumulator == 0) {
             uint32_t tInputCurrentRaw = analogRead(A7); // use VCC reference
             sLogger1SecondAccumulator.RawCurrentAccumulator += tInputCurrentRaw * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT
-                    * LOGGER_SAMPLE_FREQUENCY_HZ;
+                    * LOGGER_SAMPLES_PER_SECOND;
         }
         if (sLogger1SecondAccumulator.RawVoltageAccumulator == 0) {
             uint32_t tInputVoltageRaw = analogRead(A0); // use VCC reference
             tInputVoltageRaw *= 16; // simulate "Normalize to 1.1 V"
             sLogger1SecondAccumulator.RawVoltageAccumulator += tInputVoltageRaw * LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT
-                    * LOGGER_SAMPLE_FREQUENCY_HZ;
-            sLogger1SecondAccumulator.RawSampleCount += LOGGER_SAMPLE_FREQUENCY_HZ;
+                    * LOGGER_SAMPLES_PER_SECOND;
+            sLogger1SecondAccumulator.Raw20msSampleCount += LOGGER_SAMPLES_PER_SECOND;
         }
         digitalWrite(LED_BUILTIN, LOW);
         return;
@@ -2315,11 +2321,10 @@ void getPeriodicAccumulatingLoggerValues() {
 
         /*
          * Read 769 voltage values in 20 ms
-         * tRawVoltageValue is normalized for a value of 1023 at 4.4 V.
          */
         getVoltageRaw(); // this handles automatic range setting
 
-        uint32_t tRawVoltageValue;
+        uint32_t tRawVoltageAccumulator;
         uint16_t tInputMinimumRawVoltage;
         uint16_t tInputMaximumRawVoltage;
 
@@ -2327,13 +2332,12 @@ void getPeriodicAccumulatingLoggerValues() {
 // ADSC-StartConversion ADATE-AutoTriggerEnable ADIF-Reset Interrupt Flag
         ADCSRA = (_BV(ADEN) | _BV(ADSC) | _BV(ADATE) | _BV(ADIF) | ADC_PRESCALE32);
 
-        for (uint16_t i = 0; i < LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT;) {
-            if (i == 0) {
-                // start a new measurement / new range
-                tRawVoltageValue = 0;
-                tInputMinimumRawVoltage = UINT16_MAX;
-                tInputMaximumRawVoltage = 0;
-            }
+        // initialize for a new measurement
+        tRawVoltageAccumulator = 0;
+        tInputMinimumRawVoltage = UINT16_MAX;
+        tInputMaximumRawVoltage = 0;
+
+        for (uint16_t i = 0; i < LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT; i++) {
             /*
              * wait for free running conversion to finish.
              * Do not wait for ADSC here, since ADSC is only low for 1 ADC Clock cycle on free running conversion.
@@ -2343,7 +2347,7 @@ void getPeriodicAccumulatingLoggerValues() {
 
             // Add value
             uint16_t tInputRawVoltage = ADCL | (ADCH << 8);
-            tRawVoltageValue += tInputRawVoltage;
+            tRawVoltageAccumulator += tInputRawVoltage;
             /*
              * Find minimum and maximum
              */
@@ -2353,19 +2357,18 @@ void getPeriodicAccumulatingLoggerValues() {
             if (tInputMaximumRawVoltage < tInputRawVoltage) {
                 tInputMaximumRawVoltage = tInputRawVoltage;
             }
-            i++; // To enable re-initialization of loop by i=0 above
         }
         ADCSRA &= ~_BV(ADATE); // Disable auto-triggering (free running mode)
 
         /*
          * Normalize to 1.1 V
          */
-        auto tVoltageAttenuationFactor = getVoltageAttenuationFactor();
-        tRawVoltageValue *= tVoltageAttenuationFactor;
+        auto tVoltageAttenuationFactor = sVoltageAttenuationFactorArray[sTesterInfo.VoltageRange];
+        tRawVoltageAccumulator *= tVoltageAttenuationFactor;
         tInputMaximumRawVoltage *= tVoltageAttenuationFactor;
         tInputMinimumRawVoltage *= tVoltageAttenuationFactor;
 
-        sLogger1SecondAccumulator.RawVoltageAccumulator += tRawVoltageValue;
+        sLogger1SecondAccumulator.RawVoltageAccumulator += tRawVoltageAccumulator;
         if (sLogger1SecondAccumulator.MaximumRawVoltage < tInputMaximumRawVoltage) {
             sLogger1SecondAccumulator.MaximumRawVoltage = tInputMaximumRawVoltage;
         }
@@ -2377,14 +2380,14 @@ void getPeriodicAccumulatingLoggerValues() {
         if (!sOnlyPlotterOutput) {
 //        Serial.print(F("ADMUX=0x"));
 //        Serial.print(ADMUX, HEX);
-//        Serial.print(F(" Ref="));
-//        Serial.print(sLoggerADCVoltageReference); // 3 = INTERNAL
-            Serial.print(F(" AVGRawVoltage="));
-            Serial.println(tRawVoltageValue / LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT);
+            Serial.print(F(" AttFactor="));
+            Serial.print(tVoltageAttenuationFactor);
+            Serial.print(F(" AVGRawVoltage[1.1V]="));
+            Serial.println(tRawVoltageAccumulator / LOGGER_NUMBER_OF_SAMPLES_PER_MEASUREMENT);
         }
 #endif
 
-        sLogger1SecondAccumulator.RawSampleCount++;
+        sLogger1SecondAccumulator.Raw20msSampleCount++;
     }
 }
 
@@ -2849,25 +2852,26 @@ void detectVoltageOrCurrentRemoved() {
 }
 
 void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
-    uint16_t tVoltageNoLoadMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt; // saves 12 bytes programming space
+    // For logger this is AverageMillivolt
+    uint16_t tVoltageNoLoadOrAverageMillivolt = sBatteryOrLoggerInfo.Voltages.Battery.NoLoadMillivolt; // saves 12 bytes programming space
 
 #if !defined(SUPPRESS_SERIAL_PRINT)
     if (!sOnlyPlotterOutput) {
-        printMillisValueAsFloat(tVoltageNoLoadMillivolt);
+        printMillisValueAsFloat(tVoltageNoLoadOrAverageMillivolt);
         Serial.print(F(" V"));
     }
 #endif
 
     if (abs(
             (int16_t )sLastDiplayedValues.VoltageNoLoadMillivolt
-            - (int16_t )tVoltageNoLoadMillivolt) > VOLTAGE_DISPLAY_HYSTERESIS_MILLIVOLT) {
-        sLastDiplayedValues.VoltageNoLoadMillivolt = tVoltageNoLoadMillivolt;
+            - (int16_t )tVoltageNoLoadOrAverageMillivolt) > VOLTAGE_DISPLAY_HYSTERESIS_MILLIVOLT) {
+        sLastDiplayedValues.VoltageNoLoadMillivolt = tVoltageNoLoadOrAverageMillivolt;
 
 #if defined(SUPPORT_BLUEDISPLAY_CHART)
         if (BlueDisplay1.isConnectionEstablished()) {
             // This 2 digit resolution value may be sent even if it does not change, because the 2 decimals resolution hides display of millivolt changes
             char tStringBuffer[8];
-            dtostrf((float) tVoltageNoLoadMillivolt / 1000.0, 5, 2, tStringBuffer);
+            dtostrf((float) tVoltageNoLoadOrAverageMillivolt / 1000.0, 5, 2, tStringBuffer);
             tStringBuffer[5] = ' ';
             tStringBuffer[6] = 'V';
             tStringBuffer[7] = '\0';
@@ -2879,7 +2883,7 @@ void printVoltageNoLoadMillivoltWithTrailingSpaceLCD_BD() {
 
 #if defined(USE_LCD)
         LCDResetCursor(&myLCD);
-        LCDPrintAsFloatAs5CharacterString_2_3_Decimals(&myLCD, tVoltageNoLoadMillivolt);
+        LCDPrintAsFloatAs5CharacterString_2_3_Decimals(&myLCD, tVoltageNoLoadOrAverageMillivolt);
         myLCD.print('V'); // no trailing space because of counters which can be more than 1000
         sTesterInfo.VoltageNoLoadIsDisplayedOnLCD = true;
 // cursor is now at 7, 0
@@ -3024,8 +3028,8 @@ void printCounterLCD_BD(uint16_t aNumberToPrint) {
          */
         char tString[4];
         snprintf_P(tString, sizeof(tString), PSTR("%3u"), aNumberToPrint);
-        BlueDisplay1.drawText(DISPLAY_WIDTH - BASE_TEXT_SIZE * 3, PROBE_VALUES_POSITION_Y, tString, BASE_TEXT_SIZE, COLOR16_RED,
-                sBackgroundColor);
+        BlueDisplay1.drawText(REMOTE_DISPLAY_WIDTH - BASE_TEXT_SIZE * 3, PROBE_VALUES_POSITION_Y, tString, BASE_TEXT_SIZE,
+        COLOR16_RED, sBackgroundColor);
     }
 #endif
 }
@@ -4287,13 +4291,13 @@ Serial.println(BlueDisplay1.getHostDisplayHeight());
     uint16_t tDisplayHeight;
     if (BlueDisplay1.getHostDisplayHeight() > BlueDisplay1.getHostDisplayWidth()) {
 // currently we have portrait orientation -> change to landscape, which is requested below by BD_FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE
-        tDisplayHeight = (DISPLAY_WIDTH * BlueDisplay1.getHostDisplayWidth()) / BlueDisplay1.getHostDisplayHeight();
+        tDisplayHeight = (REMOTE_DISPLAY_WIDTH * BlueDisplay1.getHostDisplayWidth()) / BlueDisplay1.getHostDisplayHeight();
     } else {
-        tDisplayHeight = (DISPLAY_WIDTH * BlueDisplay1.getHostDisplayHeight()) / BlueDisplay1.getHostDisplayWidth();
+        tDisplayHeight = (REMOTE_DISPLAY_WIDTH * BlueDisplay1.getHostDisplayHeight()) / BlueDisplay1.getHostDisplayWidth();
     }
 // Request landscape orientation
     BlueDisplay1.setFlagsAndSize(BD_FLAG_FIRST_RESET_ALL | BD_FLAG_USE_MAX_SIZE | BD_FLAG_SCREEN_ORIENTATION_LOCK_SENSOR_LANDSCAPE,
-    DISPLAY_WIDTH, tDisplayHeight);
+    REMOTE_DISPLAY_WIDTH, tDisplayHeight);
     BlueDisplay1.setCharacterMapping(0x81, 0x03A9); // Omega in UTF16
     BlueDisplay1.setCharacterMapping(0x82, 0x0394); // Delta in UTF16
 
@@ -4301,7 +4305,7 @@ Serial.println(BlueDisplay1.getHostDisplayHeight());
      * Adjust text size if we have a wide  screen
      * The condition is just a best guess
      */
-    if ((DISPLAY_WIDTH / 2) < tDisplayHeight) {
+    if ((REMOTE_DISPLAY_WIDTH / 2) < tDisplayHeight) {
         sChartDataTextSize = BASE_TEXT_SIZE;
     } else {
 // Here we have e.g. a 20:9 display and must reduce chart data text size to avoid overflow

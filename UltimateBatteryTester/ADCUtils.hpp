@@ -1,10 +1,10 @@
 /*
  * ADCUtils.hpp
  *
- * ADC utility functions. Conversion time is defined as 0.104 milliseconds for 16 MHz Arduinos in ADCUtils.h.
+ * ADC utility functions. Conversion time is defined as 0.104 milliseconds for 16 MHz Arduinos in ADCUtils.h by setting ADC_PRESCALE.
+ * Formula for 1.1V reference is: mV = <Reading> * <ADC_INTERNAL_REFERENCE_MILLIVOLT> / READING_FOR_AREF = <Reading> * 1100 / 1024 =  <Reading> * 1.07421875
  *
- *  Copyright (C) 2016-2023  Armin Joachimsmeyer
- *  Email: armin.joachimsmeyer@gmail.com
+ *  Copyright (C) 2016-2026  Armin Joachimsmeyer
  *
  *  This file is part of Arduino-Utils https://github.com/ArminJo/Arduino-Utils.
  *
@@ -79,7 +79,7 @@ union WordUnionForADCUtils {
  * Persistent storage for VCC value
  */
 float sVCCVoltage;
-uint16_t sVCCVoltageMillivolt;
+uint16_t sVCCVoltageMillivolt; // Set by readVCCVoltageMillivoltSimple(), readVCCVoltageMillivolt()
 
 // for isVCCTooLowMultipleTimes()
 long sLastVCCCheckMillis;
@@ -234,7 +234,7 @@ uint8_t checkAndWaitForReferenceAndChannelToSwitch(uint8_t aADCChannelNumber, ui
             /*
              * Internal 1.1 Volt channel requires  <= 200 us for Nano board
              */
-            delayMicroseconds(350); // 350 was ok and 300 was too less for UltimateBatteryTester - result was 226 instead of 225
+            delayMicroseconds(350); // 350 was OK and 300 was too less for UltimateBatteryTester - result was 226 instead of 225
         } else {
             /*
              * 100 kOhm requires < 100 us, 1 MOhm requires 120 us S&H switching time
@@ -374,6 +374,7 @@ uint32_t readADCChannelMultiSamplesWithReferenceAndPrescaler(uint8_t aADCChannel
 /*
  * Returns sum of all sample values
  * Assumes, that channel and reference are still set to the right values
+ * !!!We do NOT disable interrupts here!!!
  * @ param aNumberOfSamples If > 16k an overflow may occur.
  */
 uint32_t readADCChannelMultiSamples(uint8_t aPrescale, uint16_t aNumberOfSamples) {
