@@ -19,7 +19,7 @@
  *  See the GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <http://www.gnu.org/licenses/gpl.html>.
+ *  along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
 #ifndef _ADC_UTILS_HPP
@@ -698,9 +698,14 @@ bool isVCCUSBPowered(Print *aSerial) {
 
 /*
  * It checks every 10 seconds for 6 times, and then returns once true if the undervoltage condition ( <3.4V ) still applies.
+ * Uses the following macros: - The default values are suitable for Li-ion batteries.
+ * VCC_CHECK_PERIOD_MILLIS, VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP, VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT, VCC_EMERGENCY_UNDERVOLTAGE_THRESHOLD_MILLIVOLT
  * @ return true only once, when VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP (6) times voltage too low -> shutdown
  */
-bool isVCCUndervoltageMultipleTimes() {
+bool isVCCUndervoltageMultipleTimes(Print *aSerial) {
+#if !defined(LOCAL_INFO)
+    (void) aSerial;
+#endif
     /*
      * Check VCC every VCC_CHECK_PERIOD_MILLIS - default is 10 seconds
      */
@@ -708,7 +713,7 @@ bool isVCCUndervoltageMultipleTimes() {
         sLastVCCCheckMillis = millis();
 
 #  if defined(INFO)
-        readAndPrintVCCVoltageMillivolt(&Serial);
+        readAndPrintVCCVoltageMillivolt(aSerial);
 #  else
         readVCCVoltageMillivolt();
 #  endif
@@ -727,18 +732,18 @@ bool isVCCUndervoltageMultipleTimes() {
                     // emergency shutdown
                     sVCCTooLowCounter = VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP;
 #  if defined(LOCAL_INFO)
-                    Serial.println(
+                    aSerial->println(
                             F(
                                     "Undervoltage < " STR(VCC_EMERGENCY_UNDERVOLTAGE_THRESHOLD_MILLIVOLT) " mV detected -> emergency shutdown"));
 #  endif
                 } else {
                     sVCCTooLowCounter++;
 #  if defined(LOCAL_INFO)
-                    Serial.print(sVCCVoltageMillivolt);
-                    Serial.print(F(" mV < " STR(VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT) " mV -> undervoltage detected: "));
+                    aSerial->print(sVCCVoltageMillivolt);
+                    aSerial->print(F(" mV < " STR(VCC_UNDERVOLTAGE_THRESHOLD_MILLIVOLT) " mV -> undervoltage detected: "));
 
-                    Serial.print(VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP - sVCCTooLowCounter);
-                    Serial.println(F(" attempts left"));
+                    aSerial->print(VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP - sVCCTooLowCounter);
+                    aSerial->println(F(" attempts left"));
 #  endif
                 }
                 if (sVCCTooLowCounter == VCC_UNDERVOLTAGE_CHECKS_BEFORE_STOP) {

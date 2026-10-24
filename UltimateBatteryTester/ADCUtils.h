@@ -16,7 +16,7 @@
  *  See the GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <http://www.gnu.org/licenses/gpl.html>.
+ *  along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  *
  */
 
@@ -216,7 +216,7 @@ float getTemperature(void) __attribute__ ((deprecated ("Renamed to getCPUTempera
 
 bool isVCCUSBPowered();
 bool isVCCUSBPowered(Print *aSerial);
-bool isVCCUndervoltageMultipleTimes();
+bool isVCCUndervoltageMultipleTimes(Print *aSerial);
 void resetCounterForVCCUndervoltageMultipleTimes();
 bool isVCCUndervoltage();
 bool isVCCEmergencyUndervoltage();

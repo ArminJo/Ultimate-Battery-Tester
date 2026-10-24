@@ -5,7 +5,7 @@
  *  !!! It requires the Arduino files Time.cpp and TimeLib.h, so it is not directly part of the BD library. It is only included in some of the examples !!!
  *  Requires up to 1640 bytes program memory and even more in Arduino IDE, because the "-mrelax" linker option is not set there.
  *
- *  Copyright (C) 2025  Armin Joachimsmeyer
+ *  Copyright (C) 2025-2026  Armin Joachimsmeyer
  *
  *  This file is part of BlueDisplay https://github.com/ArminJo/Arduino-BlueDisplay.
  *
@@ -20,7 +20,7 @@
  *  See the GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <http://www.gnu.org/licenses/gpl.html>.
+ *  along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
  */
 
 #include <Arduino.h>
@@ -31,6 +31,12 @@
 #ifndef _BD_TIME_HELPER_HPP
 #define _BD_TIME_HELPER_HPP
 
+#if !defined(MICROS_IN_ONE_MILLISECOND)
+#define MICROS_IN_ONE_MILLISECOND    1000U
+#endif
+#if !defined(MICROS_IN_ONE_SECOND)
+#define MICROS_IN_ONE_SECOND    1000000UL
+#endif
 #if !defined(MILLIS_IN_ONE_SECOND)
 #define MILLIS_IN_ONE_SECOND    1000U // Use U otherwise we see "warning: comparison between signed and unsigned integer expressions [-Wsign-compare]"
 #endif
