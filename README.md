@@ -109,11 +109,20 @@ The new version of the app also supports a USB OTG connection. This eliminates t
 <br/>
 
 # Measurement of battery packs with external series load resistor
-Battery packs up to 64.9 volt (15s) can also be measured.
-**However, it is important to keep the current below 545 mA**, as this is the maximum allowed for current measurement with the 2 &ohm; shunt resistor.<br/>
-This can be achieved by **adding an extra resistor in series with the built-in 12 &ohm; resistor**.<br/>
+Battery packs with voltages up to 64.9 volt (15s) can also be measured.<br/>
+**Important: The measurement current must not exceed 545 mA**, as this is the maximum current when using the default 2 &ohm; shunt resistor for current measurement.<br/>
+The built-in 12 &ohm; resistor is sufficient only for battery voltages up to **6.5 V**.
+For higher voltages, an **additional resistor must be connected in series with the built-in 12 &ohm; resistor** to keep the measurement current below 545 mA.
+
+Examples for Li-ion packs:
+- 2s **8.4 V**: add **3.9 &ohm; 1 W**, giving a total resistance of 15.9 &ohm;
+- 3s **12.6 V**: add **12 &ohm; 3 W**, giving a total resistance of 24 &ohm;
+- 4s **16.8 V**: add **22 &ohm; 6 W**, giving a total resistance of 34 &ohm;
+- 5s **21.0 V**: add **27 &ohm; 8 W**, giving a total resistance of 39 &ohm;
+- 6s **25.2 V**: add **39 &ohm; 10 W**, giving a total resistance of 51 &ohm;
+
 The voltage must still be measured directly at the battery terminal.
-For this I use a distinct cable for voltage measurement, connected to the battery’s positive lead.<br/>
+To do this, use a separate voltage-sensing cable connected to the battery's positive terminal.<br/>
 No further modifications are required.
 
 <br/>
