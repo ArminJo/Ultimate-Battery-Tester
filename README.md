@@ -391,3 +391,26 @@ and the according cutoff voltage is displayed in the first row for 2 seconds.
 
 ### Version 1.0.0
 - Initial version with EEPROM storage.
+
+# Bill of Materials (BOM)
+
+| Component | Value / Specification | Quantity |
+| --- | --- | --- |
+| Arduino Nano (Rev3.0) | — | 1 |
+| LCD Display | LCD1602 | 1 |
+| Trimpot (Potentiometer, Contrast) | 10 kΩ | 1 |
+| MOSFET Transistor (N-Channel) TO-220 | IRLZ44N or IRFZ44N | 2 |
+| Resistor High load | 1 Ω (1%), ≥ 3 W | 1 |
+| Resistor Main Shunt | 1 Ω (1%), ≥ 1 W | 2 |
+| Resistor Low load | 10 Ω (1%), 2 W | 1 |
+| Resistor Range extender | 1.71 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Range extender | 6.66 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Range extender | 33.3 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Range extender | 100 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor A7 Divider | 100 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Shunt for Logger | 0.2 Ω (5%), 1/4 W (0.25W) | 1 |
+| Resistor Pull-down | 10 kΩ, 1/4 W (0.25W) | 1 |
+| Resistor Pull-down | 47 kΩ, 1/4 W (0.25W) | 2 |
+| LDR (High R LDR) | 5mm | 1 |
+| Passive Buzzer (piezoelectric) | 5V | 1 |
+| Switch / Button (Start / stop) | — | 1 |
