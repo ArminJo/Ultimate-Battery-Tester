@@ -203,6 +203,30 @@ As the program size is at around 100%, you need to burn the UNO bootloader on th
 ![Fritzing board](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/extras/UltimateBatteryTester_Steckplatine.png)
 ![Fritzing schematics](https://github.com/ArminJo/Ultimate-Battery-Tester/blob/master/extras/UltimateBatteryTester_Schaltplan.png)
 
+# Bill of Materials (BOM)
+
+| Component | Value / Specification | Quantity |
+| --- | --- | --- |
+| Arduino Nano (Rev3.0) | - | 1 |
+| LCD display | LCD1602 | 1 |
+| Trimpot (Potentiometer for contrast) | 10 kΩ | 1 |
+| MOSFET transistor (N-Channel) | IRLZ44N or IRFZ44N or compatible | 2 |
+| Resistor High load | 1 Ω (1%), ≥ 1 W | 1 |
+| Resistor Main Shunt | 1 Ω (1%), ≥ 1 W | 2 |
+| Resistor Low load | 10 Ω (1%), 2 W | 1 |
+| Resistor Range extender A3 | 1.71 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Range extender A2 | 6.66 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Range extender A1 | 33.3 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Range extender Input | 100 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Range extender to ground | 100 kΩ (1%), 1/4 W (0.25W) | 1 |
+| Resistor Shunt for Logger | 0.2 Ω (5%), 1/4 W (0.25W) | 1 |
+| Resistor Pull-down | 10 kΩ, 1/4 W (0.25W) | 1 |
+| Resistor Pull-down | 47 kΩ, 1/4 W (0.25W) | 2 |
+| Push button (Start / stop) | - | 1 |
+| Passive buzzer (piezoelectric) | 5V | 1 |
+| Optional LDR (High R LDR) | 5mm | 1 |
+| Optional NPN transistor | any (hFE depends on LDR) | 1 |
+
 # Special pin usage
 If **pin 9** is connected to ground, verbose output for Arduino Serial Monitor is disabled. This verbose output is not suitable for Arduino Plotter.<br/>
 If **pin 10** is connected to ground, **logger mode** is entered. I.e. current is measured at the shunt at channel 4 / A4 and voltage still at channel 0 / pin A0.<br/>
